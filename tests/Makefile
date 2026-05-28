@@ -5,10 +5,10 @@ CC      = gcc
 CFLAGS  = -std=gnu11 -Wall -Wextra -g -O0 -D_GNU_SOURCE \
           -Wno-unused-parameter -Wno-unused-function \
           -Wno-unused-but-set-variable -Wno-unused-variable
-INCLUDE = -I./include -I. -Itest_stubs
+INCLUDE = -I../include -I. -Itest_stubs
 LDFLAGS = -ldl -lpthread -lm
 
-RA_SRC  = ./src
+RA_SRC  = ../src
 RA_OBJS = $(RA_SRC)/raplt_core.o $(RA_SRC)/raplt_elf.o \
           $(RA_SRC)/raplt_hash.o $(RA_SRC)/raplt_signal.o \
           $(RA_SRC)/raplt_util.o $(RA_SRC)/raplt_recon.o \
