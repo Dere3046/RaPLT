@@ -1,0 +1,27 @@
+*.o
+*.so
+*.a
+*.dylib
+*.dll
+*.exe
+.DS_Store
+*.swp
+*.swo
+*~
+
+# build artifacts
+build/
+.idea/
+.gradle/
+local.properties
+cmake-build-*/
+
+# test build artifacts
+tests/libtestfixture.so
+tests/test_elf
+tests/test_hash
+tests/test_sleb128
+tests/test_core
+tests/test_got_patch
+tests/test_batch
+tests/test_signal_safety
