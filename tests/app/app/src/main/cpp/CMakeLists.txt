@@ -22,7 +22,9 @@ target_include_directories(raplt PUBLIC ${RAPLT_ROOT}/include)
 target_compile_options(raplt PRIVATE -Wall -fvisibility=hidden -Wno-unused-parameter -Wno-unused-function)
 
 add_library(target SHARED target.c)
+set_target_properties(target PROPERTIES LINK_FLAGS "-Wl,-z,max-page-size=16384")
 
 add_library(jni SHARED jni_bridge.c)
+set_target_properties(jni PROPERTIES LINK_FLAGS "-Wl,-z,max-page-size=16384")
 target_link_libraries(jni raplt log dl)
 target_include_directories(jni PRIVATE ${RAPLT_ROOT}/include)
