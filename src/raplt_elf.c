@@ -72,7 +72,7 @@ static int packed_reloc_init(packed_reloc_iter_t *it,
     it->with_addend = rela;
     it->alive = 1;
     if(leb128_read(&it->stream, &it->total_relocs)) return -1;
-    if(leb128_read(&it->stream, (size_t *)&it->r_offset))     return -1;
+    if(leb128_read(&it->stream, &it->r_offset))     return -1;
     return 0;
 }
 
