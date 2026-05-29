@@ -1,94 +1,134 @@
 #include <jni.h>
-#include <dlfcn.h>
 #include <android/log.h>
 #include "raplt.h"
 
 #define LOGI(...) __android_log_print(ANDROID_LOG_INFO, "RaPLT", __VA_ARGS__)
 
-static int (*orig_get_number)(void);
-static int (*orig_add)(int, int);
+/* extern — these create PLT entries in libjni.so that raplt can hook */
+extern int calc_add(int, int);
+extern int calc_sub(int, int);
+extern int calc_mul(int, int);
+extern int calc_div(int, int);
 
-static int my_get_number(void)
-{
-    LOGI("hook: target_get_number returns 999 (was %d)", orig_get_number ? orig_get_number() : 0);
-    return 999;
+/* originals saved by raplt_register */
+static int (*orig_add)(int, int);
+static int (*orig_sub)(int, int);
+static int (*orig_mul)(int, int);
+static int (*orig_div)(int, int);
+
+/* hook registrations for unregister */
+static raplt_hook_t *hk_add, *hk_sub, *hk_mul, *hk_div;
+
+/* hook 1: add → +1000 */
+static int my_add(int a, int b) {
+    int r = orig_add ? orig_add(a, b) : a + b;
+    LOGI("calc_add(%d,%d) = %d → HOOKED = %d", a, b, r, r + 1000);
+    return r + 1000;
 }
 
-static int my_add(int a, int b)
-{
-    int hooked = a * b;
-    LOGI("hook: target_add(%d,%d) = %d (was %d)", a, b, hooked, orig_add ? orig_add(a, b) : 0);
-    return hooked;
+/* hook 2: sub → swap operands */
+static int my_sub(int a, int b) {
+    int r = orig_sub ? orig_sub(a, b) : a - b;
+    LOGI("calc_sub(%d,%d) = %d → HOOKED = %d", a, b, r, b - a);
+    return b - a;
+}
+
+/* hook 3: mul → a*b + a */
+static int my_mul(int a, int b) {
+    int r = orig_mul ? orig_mul(a, b) : a * b;
+    LOGI("calc_mul(%d,%d) = %d → HOOKED = %d", a, b, r, r + a);
+    return r + a;
+}
+
+/* hook 4: div → a * b */
+static int my_div(int a, int b) {
+    int r = orig_div ? orig_div(a, b) : (b ? a / b : 0);
+    LOGI("calc_div(%d,%d) = %d → HOOKED = %d", a, b, r, a * b);
+    return a * b;
+}
+
+/* regex that matches any library inside the APK */
+static const char *R = ".*base\\.apk.*";
+
+JNIEXPORT jint JNICALL
+Java_com_raplt_test_MainActivity_nativeAdd(JNIEnv *e, jobject o, jint a, jint b) {
+    (void)e; (void)o; return calc_add(a, b);
+}
+JNIEXPORT jint JNICALL
+Java_com_raplt_test_MainActivity_nativeSub(JNIEnv *e, jobject o, jint a, jint b) {
+    (void)e; (void)o; return calc_sub(a, b);
+}
+JNIEXPORT jint JNICALL
+Java_com_raplt_test_MainActivity_nativeMul(JNIEnv *e, jobject o, jint a, jint b) {
+    (void)e; (void)o; return calc_mul(a, b);
+}
+JNIEXPORT jint JNICALL
+Java_com_raplt_test_MainActivity_nativeDiv(JNIEnv *e, jobject o, jint a, jint b) {
+    (void)e; (void)o; return calc_div(a, b);
+}
+
+JNIEXPORT jint JNICALL
+Java_com_raplt_test_MainActivity_nativeHookAdd(JNIEnv *e, jobject o) {
+    (void)e; (void)o;
+    if(!hk_add) hk_add = raplt_register(R, "calc_add", my_add, (void**)&orig_add, 0);
+    LOGI("hook_add = %p (orig=%p)", (void*)hk_add, (void*)orig_add);
+    return hk_add ? 1 : 0;
+}
+JNIEXPORT jint JNICALL
+Java_com_raplt_test_MainActivity_nativeHookSub(JNIEnv *e, jobject o) {
+    (void)e; (void)o;
+    if(!hk_sub) hk_sub = raplt_register(R, "calc_sub", my_sub, (void**)&orig_sub, 0);
+    return hk_sub ? 1 : 0;
+}
+JNIEXPORT jint JNICALL
+Java_com_raplt_test_MainActivity_nativeHookMul(JNIEnv *e, jobject o) {
+    (void)e; (void)o;
+    if(!hk_mul) hk_mul = raplt_register(R, "calc_mul", my_mul, (void**)&orig_mul, 0);
+    return hk_mul ? 1 : 0;
+}
+JNIEXPORT jint JNICALL
+Java_com_raplt_test_MainActivity_nativeHookDiv(JNIEnv *e, jobject o) {
+    (void)e; (void)o;
+    if(!hk_div) hk_div = raplt_register(R, "calc_div", my_div, (void**)&orig_div, 0);
+    return hk_div ? 1 : 0;
+}
+
+JNIEXPORT jint JNICALL
+Java_com_raplt_test_MainActivity_nativeUnhookAdd(JNIEnv *e, jobject o) {
+    (void)e; (void)o;
+    if(hk_add) { raplt_unregister(hk_add); hk_add = NULL; orig_add = NULL; }
+    return 0;
+}
+JNIEXPORT jint JNICALL
+Java_com_raplt_test_MainActivity_nativeUnhookSub(JNIEnv *e, jobject o) {
+    (void)e; (void)o;
+    if(hk_sub) { raplt_unregister(hk_sub); hk_sub = NULL; orig_sub = NULL; }
+    return 0;
+}
+JNIEXPORT jint JNICALL
+Java_com_raplt_test_MainActivity_nativeUnhookMul(JNIEnv *e, jobject o) {
+    (void)e; (void)o;
+    if(hk_mul) { raplt_unregister(hk_mul); hk_mul = NULL; orig_mul = NULL; }
+    return 0;
+}
+JNIEXPORT jint JNICALL
+Java_com_raplt_test_MainActivity_nativeUnhookDiv(JNIEnv *e, jobject o) {
+    (void)e; (void)o;
+    if(hk_div) { raplt_unregister(hk_div); hk_div = NULL; orig_div = NULL; }
+    return 0;
+}
+
+JNIEXPORT jint JNICALL
+Java_com_raplt_test_MainActivity_nativeUnhookAll(JNIEnv *e, jobject o) {
+    (void)e; (void)o;
+    if(hk_add) { raplt_unregister(hk_add); hk_add = NULL; orig_add = NULL; }
+    if(hk_sub) { raplt_unregister(hk_sub); hk_sub = NULL; orig_sub = NULL; }
+    if(hk_mul) { raplt_unregister(hk_mul); hk_mul = NULL; orig_mul = NULL; }
+    if(hk_div) { raplt_unregister(hk_div); hk_div = NULL; orig_div = NULL; }
+    return 0;
 }
 
 JNIEXPORT jstring JNICALL
-Java_com_raplt_test_MainActivity_nativeRun(JNIEnv *e, jobject o)
-{
-    (void)o;
-    char buf[1024];
-    int off = 0;
-
-    off += snprintf(buf + off, sizeof(buf) - off, "RaPLT %s\n", raplt_version());
-
-    void *h = dlopen("libtarget.so", RTLD_NOW);
-    if(!h) {
-        off += snprintf(buf + off, sizeof(buf) - off, "FAIL: dlopen target.so\n");
-        return (*e)->NewStringUTF(e, buf);
-    }
-
-    /* resolve and test original functions */
-    int (*get_number)(void) = dlsym(h, "target_get_number");
-    int (*add)(int, int) = dlsym(h, "target_add");
-    if(!get_number || !add) {
-        off += snprintf(buf + off, sizeof(buf) - off, "FAIL: dlsym\n");
-        dlclose(h);
-        return (*e)->NewStringUTF(e, buf);
-    }
-
-    int orig_n = get_number();
-    int orig_s = add(5, 3);
-    off += snprintf(buf + off, sizeof(buf) - off,
-                    "before hook: get_number=%d add(5,3)=%d\n", orig_n, orig_s);
-
-    /* hook — regex matches the APK path on Android 16 */
-    raplt_hook_t *hk = raplt_register(".*base\\.apk.*",
-                                       "target_get_number",
-                                       my_get_number,
-                                       (void**)&orig_get_number,
-                                       0);
-    if(!hk) {
-        off += snprintf(buf + off, sizeof(buf) - off, "FAIL: register get_number\n");
-        dlclose(h);
-        return (*e)->NewStringUTF(e, buf);
-    }
-
-    raplt_hook_t *ha = raplt_register(".*base\\.apk.*",
-                                       "target_add",
-                                       my_add,
-                                       (void**)&orig_add,
-                                       0);
-    off += snprintf(buf + off, sizeof(buf) - off, "hooks: get_number=%p add=%p\n", (void*)hk, (void*)ha);
-
-    /* call hooked versions */
-    int hooked_n = get_number();
-    int hooked_s = add(5, 3);
-    off += snprintf(buf + off, sizeof(buf) - off,
-                    "after hook: get_number=%d add(5,3)=%d\n", hooked_n, hooked_s);
-
-    /* unregister */
-    if(hk) raplt_unregister(hk);
-    if(ha) raplt_unregister(ha);
-
-    /* verify restored */
-    int restored_n = get_number();
-    int restored_s = add(5, 3);
-    off += snprintf(buf + off, sizeof(buf) - off,
-                    "restored: get_number=%d add(5,3)=%d\n", restored_n, restored_s);
-
-    raplt_clear();
-    dlclose(h);
-
-    int pass = (hooked_n == 999 && hooked_s == 15);
-    off += snprintf(buf + off, sizeof(buf) - off, "\n%s", pass ? "PASS" : "FAIL");
-    return (*e)->NewStringUTF(e, buf);
+Java_com_raplt_test_MainActivity_nativeVersion(JNIEnv *e, jobject o) {
+    (void)o; return (*e)->NewStringUTF(e, raplt_version());
 }
