@@ -1,8 +1,15 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="com.raplt.test">
-    <application android:label="RaPLT Test">
-        <activity android:name=".MainActivity" android:exported="true">
+    <application
+        android:label="RaPLT Test"
+        android:hasFragileUserData="true">
+        <property
+            android:name="android.16kb.page_size"
+            android:value="true" />
+        <activity
+            android:name=".MainActivity"
+            android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
