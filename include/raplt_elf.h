@@ -119,6 +119,10 @@ int raplt_elf_check_header(uintptr_t addr);
 
 void raplt_elf_fini(raplt_lib_t *lib);
 
+int raplt_elf_resolve_st_value(raplt_lib_t *lib,
+                                const char  *symbol,
+                                void       **out_addr);
+
 #ifdef __cplusplus
 }
 #endif

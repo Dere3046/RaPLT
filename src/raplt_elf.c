@@ -550,3 +550,20 @@ int raplt_elf_find_got(raplt_lib_t *lib, const char *symbol,
     }
     return 0;
 }
+
+int raplt_elf_resolve_st_value(raplt_lib_t *lib,
+                                const char  *symbol,
+                                void       **out_addr)
+{
+    if(!lib || !symbol || !out_addr) return -1;
+    if(!lib->string_table || !lib->symbol_table) return -1;
+
+    uint32_t idx;
+    if(resolve_symbol_index(lib, symbol, &idx)) return -1;
+
+    ElfW(Addr) val = lib->symbol_table[idx].st_value;
+    if(val == 0) return -1;
+
+    *out_addr = (void *)(lib->load_bias + val);
+    return 0;
+}

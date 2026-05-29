@@ -216,6 +216,15 @@ static void got_map_remove(void **addr)
     }
 }
 
+static raplt_lib_t *find_lib_for_addr(void **addr)
+{
+    for(raplt_lib_t *lib = g_core.libs; lib; lib = lib->next)
+        if((uintptr_t)addr >= lib->memory_base &&
+           (uintptr_t)addr < lib->memory_base + 0x1000000)
+            return lib;
+    return NULL;
+}
+
 static int raplt_core_init_locked(void)
 {
     if(g_core.inited) return 0;
@@ -432,8 +441,30 @@ int raplt_unregister(raplt_hook_t *hook)
             *prev = reg->next;
             for(size_t i = 0; i < reg->entry_count; i++) {
                 got_map_remove(reg->entries[i].addr);
-                if(reg->entries[i].original)
-                    patch_one_got(reg->entries[i].addr, reg->entries[i].original);
+                void *got_addr = (void *)reg->entries[i].addr;
+                raplt_lib_t *lib = find_lib_for_addr(got_addr);
+
+                /* tier 1: re-resolve from .dynsym st_value */
+                void *correct = NULL;
+                if(lib && raplt_elf_resolve_st_value(lib, reg->symbol, &correct) == 0) {
+                    patch_one_got(got_addr, correct);
+                    continue;
+                }
+
+                /* tier 2: read current GOT value */
+                void *current = raplt_read_got(got_addr);
+                if(current && current != reg->new_func) {
+                    continue;
+                }
+
+                /* tier 3: cached original fallback */
+                if(reg->entries[i].original) {
+                    patch_one_got(got_addr, reg->entries[i].original);
+                    continue;
+                }
+
+                /* tier 4: cannot recover, keep hook */
+                LOGW("cannot restore %s @ %p", reg->symbol, got_addr);
             }
             raplt_signal_unregister_lazy(reg->entries[0].addr);
             free(reg->symbol); free(reg->entries); free(reg);
@@ -573,12 +604,23 @@ void rescan_libraries(void)
         g_core.libs = lib;
 
         for(raplt_registration_t *reg = g_core.hooks; reg; reg = reg->next) {
-            raplt_got_entry_t *entries;
+            raplt_got_entry_t *new_entries;
             size_t cnt;
-            if(raplt_sym_index_lookup(lib->got_index, reg->symbol, &entries, &cnt))
+            if(raplt_sym_index_lookup(lib->got_index, reg->symbol, &new_entries, &cnt))
                 continue;
-            for(size_t j = 0; j < cnt; j++)
-                patch_one_got(entries[j].addr, reg->new_func);
+
+            size_t old_n = reg->entry_count;
+            raplt_got_entry_t *merged = realloc(reg->entries,
+                (old_n + cnt) * sizeof(raplt_got_entry_t));
+            if(!merged) continue;
+            reg->entries = merged;
+
+            for(size_t j = 0; j < cnt; j++) {
+                reg->entries[old_n + j] = new_entries[j];
+                got_map_insert(new_entries[j].addr, reg);
+                patch_one_got(new_entries[j].addr, reg->new_func);
+                reg->entry_count++;
+            }
         }
 
         LOGI("new library: %s", maps[i].pathname);
