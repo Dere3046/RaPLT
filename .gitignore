@@ -10,7 +10,7 @@
 *~
 
 # AVD test artifacts
-tests/avd/libs/
+tests/avd/app/build/
 tests/avd/.gradle/
 tests/avd/build/
 build/
