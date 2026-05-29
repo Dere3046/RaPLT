@@ -111,7 +111,7 @@ int raplt_scan_maps(raplt_map_entry_t **entries, size_t *count)
             continue;
 
         if(perm[3] != 'p') continue;
-        if(perm[2] != 'x') continue;
+        if(perm[0] != 'r' || perm[2] != 'x') continue;
 
         while(pathname_pos < (int)(sizeof(line) - 1) &&
               line[pathname_pos] == ' ')

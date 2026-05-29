@@ -237,6 +237,9 @@ static int raplt_core_init_locked(void)
         return -1;
     }
 
+    raplt_signal_init();
+    raplt_signal_guard_init();
+
     for(size_t i = 0; i < map_count; i++) {
         if(is_ignored(maps[i].pathname)) continue;
         if(is_self_lib(maps[i].pathname)) continue;
@@ -244,14 +247,18 @@ static int raplt_core_init_locked(void)
         raplt_lib_t *lib = calloc(1, sizeof(raplt_lib_t));
         if(!lib) continue;
 
+        if(raplt_signal_guard_enter()) { free(lib); continue; }
+
         if(raplt_elf_check_header(maps[i].base_addr) != 0) {
-            free(lib); continue;
+            raplt_signal_guard_exit(); free(lib); continue;
         }
 
         int r = raplt_elf_init(lib, maps[i].base_addr,
                                 maps[i].pathname,
                                 maps[i].dev, maps[i].inode);
-        if(r != 0) { free(lib); continue; }
+        if(r != 0) { raplt_signal_guard_exit(); free(lib); continue; }
+
+        raplt_signal_guard_exit();
 
         if(raplt_elf_build_got_index(lib)) {
             raplt_elf_fini(lib); free(lib); continue;
@@ -263,7 +270,6 @@ static int raplt_core_init_locked(void)
 
     raplt_free_maps(maps, map_count);
 
-    raplt_signal_init();
     raplt_cfi_disable();
 
     g_core.inited = 1;
@@ -589,13 +595,19 @@ void rescan_libraries(void)
 
         raplt_lib_t *lib = calloc(1, sizeof(raplt_lib_t));
         if(!lib) continue;
+
+        if(raplt_signal_guard_enter()) { free(lib); continue; }
+
         if(raplt_elf_check_header(maps[i].base_addr) != 0) {
-            free(lib); continue;
+            raplt_signal_guard_exit(); free(lib); continue;
         }
         if(raplt_elf_init(lib, maps[i].base_addr, maps[i].pathname,
                            maps[i].dev, maps[i].inode)) {
-            free(lib); continue;
+            raplt_signal_guard_exit(); free(lib); continue;
         }
+
+        raplt_signal_guard_exit();
+
         if(raplt_elf_build_got_index(lib)) {
             raplt_elf_fini(lib); free(lib); continue;
         }
