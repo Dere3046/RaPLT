@@ -59,21 +59,26 @@ jobs:
           target: default
           emulator-options: -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
           script: |
-            echo "Android: $(getprop ro.build.version.release)"
-            echo "ABI: $(getprop ro.product.cpu.abi)"
+            export ANDROID_HOME=/usr/local/lib/android/sdk
+            echo "Android: $(adb shell getprop ro.build.version.release)"
+            echo "ABI: $(adb shell getprop ro.product.cpu.abi)"
 
-            cd ${{ github.workspace }}/tests/avd
+            cd tests/avd
 
-            gradle assembleDebug
+            gradle :app:assembleDebug
 
-            # install APK
-            apk_path=$(find app/build/outputs -name '*.apk' | head -1)
-            adb install -r "$apk_path"
+            apk_path=$(find app/build/outputs -name '*.apk' 2>/dev/null | head -1)
+            if [ -z "$apk_path" ]; then
+                echo "FAIL: no APK found"
+                find . -name '*.apk' 2>/dev/null
+                exit 1
+            fi
+            echo "APK: $apk_path"
 
-            # launch and wait
+            adb install -r -g "$apk_path"
+
             adb shell am start -n com.raplt.test/.MainActivity
             sleep 8
 
-            # check logcat for test results
-            echo "=== Logcat RaPLT ==="
-            adb logcat -d -s RaPLT:V RaPLT-jni:V RaPLT-target:V | head -30
+            echo "=== Logcat ==="
+            adb logcat -d -s RaPLT:V RaPLT-jni:V RaPLT-target:V | head -40
