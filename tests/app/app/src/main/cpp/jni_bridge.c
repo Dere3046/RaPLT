@@ -132,3 +132,14 @@ JNIEXPORT jstring JNICALL
 Java_com_raplt_test_MainActivity_nativeVersion(JNIEnv *e, jobject o) {
     (void)o; return (*e)->NewStringUTF(e, raplt_version());
 }
+
+JNIEXPORT jint JNICALL
+Java_com_raplt_test_MainActivity_nativeInit(JNIEnv *e, jobject o) {
+    (void)e; (void)o;
+    /* trigger raplt init (scans maps, builds GOT index) */
+    raplt_hook_t *h = raplt_register(R, "calc_add", my_add, (void**)&orig_add, 0);
+    if(!h) { LOGI("init FAIL"); return -1; }
+    raplt_unregister(h);
+    LOGI("init OK");
+    return 0;
+}
