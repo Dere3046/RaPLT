@@ -9,7 +9,10 @@
 *.swo
 *~
 
-# build artifacts
+# AVD test artifacts
+tests/avd/app/build/
+tests/avd/.gradle/
+tests/avd/build/
 build/
 .idea/
 .gradle/

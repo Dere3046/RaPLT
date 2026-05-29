@@ -29,7 +29,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        api-level: [30, 34]
+        api-level: [34]
         arch: [x86_64]
     steps:
       - uses: actions/checkout@v4
@@ -38,6 +38,11 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
+
+      - name: setup gradle
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y gradle
 
       - name: enable KVM
         run: |
@@ -54,6 +59,21 @@ jobs:
           target: default
           emulator-options: -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
           script: |
-            echo "Android version: $(getprop ro.build.version.release)"
+            echo "Android: $(getprop ro.build.version.release)"
             echo "ABI: $(getprop ro.product.cpu.abi)"
-            echo "NDK available: $(ls $ANDROID_HOME/ndk/ 2>&1 || echo 'not in path')"
+
+            cd ${{ github.workspace }}/tests/avd
+
+            gradle assembleDebug
+
+            # install APK
+            apk_path=$(find app/build/outputs -name '*.apk' | head -1)
+            adb install -r "$apk_path"
+
+            # launch and wait
+            adb shell am start -n com.raplt.test/.MainActivity
+            sleep 8
+
+            # check logcat for test results
+            echo "=== Logcat RaPLT ==="
+            adb logcat -d -s RaPLT:V RaPLT-jni:V RaPLT-target:V | head -30
