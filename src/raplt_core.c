@@ -168,7 +168,10 @@ static void patch_one_got(void **addr, void *new_func)
     unsigned int old_prot = 0;
     raplt_get_protect((uintptr_t)addr, sizeof(void *), NULL, &old_prot);
     if(!(old_prot & PROT_WRITE))
-        raplt_set_protect((uintptr_t)addr, PROT_READ | PROT_WRITE);
+        if(raplt_set_protect((uintptr_t)addr, PROT_READ | PROT_WRITE)) {
+            LOGW("W^X: cannot make GOT writable at %p", addr);
+            return;
+        }
     raplt_write_got(addr, new_func);
     if(!(old_prot & PROT_WRITE))
         raplt_set_protect((uintptr_t)addr, old_prot);
