@@ -13,7 +13,6 @@ public class MainActivity extends Activity {
     private TextView display;
     private Button[] hk = new Button[4];
     private boolean[] hkOn = new boolean[4];
-    private boolean inited = false;
 
     private int curA = 0, curB = 0;
     private char curOp = ' ';
@@ -39,6 +38,9 @@ public class MainActivity extends Activity {
     @Override
     protected void onCreate(Bundle s) {
         super.onCreate(s);
+
+        /* init raplt early — avoids 5s ANR on button click */
+        nativeInit();
 
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
@@ -83,7 +85,7 @@ public class MainActivity extends Activity {
         applyAll.setTextSize(14);
         applyAll.setBackgroundColor(Color.parseColor("#0f3460"));
         applyAll.setTextColor(Color.WHITE);
-        applyAll.setOnClickListener(v -> { ensureInit(); for (int i = 0; i < 4; i++) { if (!hkOn[i]) toggleHook(i); } });
+        applyAll.setOnClickListener(v -> { for (int i = 0; i < 4; i++) { if (!hkOn[i]) toggleHook(i); } });
         brow.addView(applyAll, new LinearLayout.LayoutParams(0, dp(40), 1));
         Button restoreAll = new Button(this);
         restoreAll.setText("Restore All");
@@ -135,12 +137,6 @@ public class MainActivity extends Activity {
     private void setHkColor(int i) {
         hk[i].setBackgroundColor(Color.parseColor(hkOn[i] ? "#00d2ff" : "#555555"));
         hk[i].setTextColor(Color.parseColor(hkOn[i] ? "#1a1a2e" : "#ffffff"));
-    }
-
-    private void ensureInit() {
-        if (inited) return;
-        nativeInit();
-        inited = true;
     }
 
     /* calculator */
@@ -200,7 +196,6 @@ public class MainActivity extends Activity {
     /* hook toggles */
 
     private void toggleHook(int i) {
-        ensureInit();
         try {
             if (hkOn[i]) {
                 if (i == 0) nativeUnhookAdd();
