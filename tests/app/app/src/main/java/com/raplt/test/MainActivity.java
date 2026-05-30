@@ -13,14 +13,12 @@ public class MainActivity extends Activity {
     private TextView display;
     private Button[] hk = new Button[4];
     private boolean[] hkOn = new boolean[4];
-    private volatile boolean inited = false;
 
     private int curA = 0, curB = 0;
     private char curOp = ' ';
     private boolean hasOp = false, hasEq = false;
     private String buf = "0";
 
-    private native int nativeInit(String logdir);
     private native int nativeAdd(int a, int b);
     private native int nativeSub(int a, int b);
     private native int nativeMul(int a, int b);
@@ -39,18 +37,6 @@ public class MainActivity extends Activity {
     @Override
     protected void onCreate(Bundle s) {
         super.onCreate(s);
-
-        /* init raplt in background — don't block UI thread */
-        new Thread(() -> {
-            String dir = getFilesDir().getAbsolutePath();
-            android.util.Log.i("RaPLT", "init start dir=" + dir);
-            nativeInit(dir);
-            android.util.Log.i("RaPLT", "init done");
-            runOnUiThread(() -> {
-                inited = true;
-                Toast.makeText(this, "RaPLT ready", Toast.LENGTH_SHORT).show();
-            });
-        }).start();
 
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
@@ -95,7 +81,7 @@ public class MainActivity extends Activity {
         applyAll.setTextSize(14);
         applyAll.setBackgroundColor(Color.parseColor("#0f3460"));
         applyAll.setTextColor(Color.WHITE);
-        applyAll.setOnClickListener(v -> { if (!inited) { Toast.makeText(this,"initializing...",0).show(); return; } for (int i = 0; i < 4; i++) { if (!hkOn[i]) toggleHook(i); } });
+        applyAll.setOnClickListener(v -> { for (int i = 0; i < 4; i++) if (!hkOn[i]) toggleHook(i); });
         brow.addView(applyAll, new LinearLayout.LayoutParams(0, dp(40), 1));
         Button restoreAll = new Button(this);
         restoreAll.setText("Restore All");
@@ -136,13 +122,10 @@ public class MainActivity extends Activity {
     }
 
     /* helpers */
-
     private int dp(int n) { return (int)(n * getResources().getDisplayMetrics().density); }
-    private TextView tv(String color, int sz, String txt, boolean bold) {
-        TextView t = new TextView(this);
-        t.setText(txt); t.setTextSize(sz); t.setTextColor(Color.parseColor(color));
-        if (bold) t.setTypeface(Typeface.DEFAULT_BOLD);
-        return t;
+    private TextView tv(String c, int sz, String txt, boolean b) {
+        TextView t = new TextView(this); t.setText(txt); t.setTextSize(sz);
+        t.setTextColor(Color.parseColor(c)); if(b) t.setTypeface(Typeface.DEFAULT_BOLD); return t;
     }
     private void setHkColor(int i) {
         hk[i].setBackgroundColor(Color.parseColor(hkOn[i] ? "#00d2ff" : "#555555"));
@@ -150,87 +133,43 @@ public class MainActivity extends Activity {
     }
 
     /* calculator */
-
-    private int num() {
-        try { return Integer.parseInt(buf); } catch (Exception e) { return 0; }
-    }
-    private void clear() {
-        display.setText("0"); buf = "0";
-        curA = curB = 0; curOp = ' '; hasOp = hasEq = false;
-    }
-    private int calc(char op, int a, int b) {
-        switch (op) {
-            case '+': return nativeAdd(a, b);
-            case '-': return nativeSub(a, b);
-            case '\u00d7': return nativeMul(a, b);
-            case '\u00f7': return b == 0 ? 0 : nativeDiv(a, b);
+    private int num() { try { return Integer.parseInt(buf); } catch(Exception e) { return 0; } }
+    private void clear() { display.setText("0"); buf="0"; curA=curB=0; curOp=' '; hasOp=hasEq=false; }
+    private int calc(char o, int a, int b) {
+        switch(o) {
+            case '+': return nativeAdd(a,b);
+            case '-': return nativeSub(a,b);
+            case '\u00d7': return nativeMul(a,b);
+            case '\u00f7': return b==0?0:nativeDiv(a,b);
             default: return 0;
         }
     }
-
     private void keyPress(String k) {
-        if (k.equals("C")) { clear(); return; }
-
-        String ops = "+-\u00d7\u00f7";
-
-        if (k.equals("\u25a1")) {
-            if (hasOp) {
-                curB = num();
-                int r = calc(curOp, curA, curB);
-                display.setText(curA + " " + curOp + " " + curB + " = " + r);
-                curA = r; buf = "" + r; hasEq = true;
-            }
-            return;
+        if(k.equals("C")){clear();return;}
+        String ops="+-\u00d7\u00f7";
+        if(k.equals("\u25a1")) { if(hasOp){curB=num();int r=calc(curOp,curA,curB);display.setText(curA+" "+curOp+" "+curB+" = "+r);curA=r;buf=""+r;hasEq=true;} return; }
+        if(ops.contains(k)) {
+            if(hasOp){curB=num();int r=calc(curOp,curA,curB);display.setText(curA+" "+curOp+" "+curB+" = "+r);curA=r;}
+            else curA=num();
+            curOp=k.charAt(0);buf="0";hasOp=true;hasEq=false;
+            display.setText(curA+" "+curOp+" "); return;
         }
-
-        if (ops.contains(k)) {
-            if (hasOp) {
-                curB = num();
-                int r = calc(curOp, curA, curB);
-                display.setText(curA + " " + curOp + " " + curB + " = " + r);
-                curA = r;
-            } else {
-                curA = num();
-            }
-            curOp = k.charAt(0);
-            buf = "0"; hasOp = true; hasEq = false;
-            display.setText(curA + " " + curOp + " ");
-            return;
-        }
-
-        if (hasEq) { clear(); }
-        if (buf.equals("0")) buf = k; else buf += k;
+        if(hasEq)clear();
+        if(buf.equals("0")&&!k.equals("←"))buf=k;else buf+=k;
         display.setText(buf);
     }
 
     /* hook toggles */
-
     private void toggleHook(int i) {
-        if (!inited) {
-            Toast.makeText(this, "initializing...", Toast.LENGTH_SHORT).show();
-            return;
-        }
         try {
-            if (hkOn[i]) {
-                if (i == 0) nativeUnhookAdd();
-                else if (i == 1) nativeUnhookSub();
-                else if (i == 2) nativeUnhookMul();
-                else if (i == 3) nativeUnhookDiv();
+            if(hkOn[i]) {
+                if(i==0)nativeUnhookAdd(); else if(i==1)nativeUnhookSub(); else if(i==2)nativeUnhookMul(); else if(i==3)nativeUnhookDiv();
             } else {
-                int r = 0;
-                if (i == 0) r = nativeHookAdd();
-                else if (i == 1) r = nativeHookSub();
-                else if (i == 2) r = nativeHookMul();
-                else if (i == 3) r = nativeHookDiv();
-                if (r == 0) {
-                    Toast.makeText(this, "hook failed", Toast.LENGTH_SHORT).show();
-                    return;
-                }
+                int r=0;
+                if(i==0)r=nativeHookAdd(); else if(i==1)r=nativeHookSub(); else if(i==2)r=nativeHookMul(); else if(i==3)r=nativeHookDiv();
+                if(r==0){Toast.makeText(this,"hook failed",Toast.LENGTH_SHORT).show();return;}
             }
-            hkOn[i] = !hkOn[i];
-            setHkColor(i);
-        } catch (Exception e) {
-            Toast.makeText(this, "crash", Toast.LENGTH_SHORT).show();
-        }
+            hkOn[i]=!hkOn[i]; setHkColor(i);
+        } catch(Exception e) { Toast.makeText(this,"crash",Toast.LENGTH_SHORT).show(); }
     }
 }
