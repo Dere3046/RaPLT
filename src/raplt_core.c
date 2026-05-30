@@ -7,6 +7,8 @@
 #include <unistd.h>
 #include <errno.h>
 #include <pthread.h>
+#include <signal.h>
+#include <setjmp.h>
 #include <regex.h>
 #include <dlfcn.h>
 #include <sys/mman.h>
@@ -163,18 +165,30 @@ static int detect_caller_lib(char *buf, size_t bufsz)
     return -1;
 }
 
+static sigjmp_buf g_patch_env;
+
+static void patch_sigsegv_handler(int sig) {
+    (void)sig;
+    siglongjmp(g_patch_env, 1);
+}
+
 static void patch_one_got(void **addr, void *new_func)
 {
     unsigned int old_prot = 0;
     raplt_get_protect((uintptr_t)addr, sizeof(void *), NULL, &old_prot);
     if(!(old_prot & PROT_WRITE))
-        if(raplt_set_protect((uintptr_t)addr, PROT_READ | PROT_WRITE)) {
-            LOGW("W^X: cannot make GOT writable at %p", addr);
+        if(raplt_set_protect((uintptr_t)addr, PROT_READ | PROT_WRITE))
             return;
-        }
-    raplt_write_got(addr, new_func);
-    if(!(old_prot & PROT_WRITE))
-        raplt_set_protect((uintptr_t)addr, old_prot);
+
+    struct sigaction old_act, act;
+    sigemptyset(&act.sa_mask);
+    act.sa_handler = patch_sigsegv_handler;
+    sigaction(SIGSEGV, &act, &old_act);
+
+    if(sigsetjmp(g_patch_env, 1) == 0)
+        raplt_write_got(addr, new_func);
+
+    sigaction(SIGSEGV, &old_act, NULL);
     raplt_flush_cache((uintptr_t)addr);
 }
 
