@@ -15,9 +15,16 @@
 #include <limits.h>
 #include <stdarg.h>
 
-/* debug log — survives process death, writes to /data/local/tmp/raplt.log */
+/* debug log — survives process death */
+static char g_log_path[256] = {0};
+
+void raplt_set_log_path(const char *p) {
+    if(p) { strncpy(g_log_path, p, sizeof(g_log_path)-1); g_log_path[sizeof(g_log_path)-1]=0; }
+}
+
 static void flog(const char *fmt, ...) {
-    FILE *f = fopen("/data/local/tmp/raplt.log", "a");
+    if(!g_log_path[0]) return;
+    FILE *f = fopen(g_log_path, "a");
     if(!f) return;
     va_list ap;
     va_start(ap, fmt);

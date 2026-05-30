@@ -48,8 +48,15 @@ Java_com_raplt_test_MainActivity_nativeDiv(JNIEnv *e, jobject o, jint a, jint b)
 }
 
 JNIEXPORT jint JNICALL
-Java_com_raplt_test_MainActivity_nativeInit(JNIEnv *e, jobject o) {
-    (void)e; (void)o;
+Java_com_raplt_test_MainActivity_nativeInit(JNIEnv *e, jobject o, jstring logdir) {
+    (void)o;
+    const char *dir = logdir ? (*e)->GetStringUTFChars(e, logdir, NULL) : NULL;
+    if(dir) {
+        char path[256];
+        snprintf(path, sizeof(path), "%s/raplt.log", dir);
+        raplt_set_log_path(path);
+        (*e)->ReleaseStringUTFChars(e, logdir, dir);
+    }
     LOGI("init=%d", raplt_init());
     return 0;
 }
