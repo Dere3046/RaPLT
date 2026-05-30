@@ -10,7 +10,6 @@ extern "C" {
 #endif
 
 int raplt_init(void);
-void raplt_set_log_path(const char *path);
 int raplt_lazy_resolve(void *got_entry);
 void rescan_libraries(void);
 int raplt_dl_monitor_init(void);

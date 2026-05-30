@@ -13,13 +13,12 @@
 #include <dlfcn.h>
 #include <sys/mman.h>
 #include <limits.h>
-#include <stdarg.h>
 
-/* debug log — survives process death */
-static char g_log_path[256] = {0};
+/* references: xHook (MIT), bhook (LGPL-2.1) */
 
-void raplt_set_log_path(const char *p) {
-    if(p) { strncpy(g_log_path, p, sizeof(g_log_path)-1); g_log_path[sizeof(g_log_path)-1]=0; }
+/* debug log */
+static void flog(const char *fmt, ...) {
+    (void)fmt;
 }
 
 static void flog(const char *fmt, ...) {

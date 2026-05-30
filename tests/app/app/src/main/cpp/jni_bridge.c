@@ -49,14 +49,9 @@ Java_com_raplt_test_MainActivity_nativeDiv(JNIEnv *e, jobject o, jint a, jint b)
 
 JNIEXPORT jint JNICALL
 Java_com_raplt_test_MainActivity_nativeInit(JNIEnv *e, jobject o, jstring logdir) {
-    (void)o;
-    const char *dir = logdir ? (*e)->GetStringUTFChars(e, logdir, NULL) : NULL;
-    if(dir) {
-        char path[256];
-        snprintf(path, sizeof(path), "%s/raplt.log", dir);
-        raplt_set_log_path(path);
-        (*e)->ReleaseStringUTFChars(e, logdir, dir);
-    }
+    (void)e; (void)o; (void)logdir;
+    /* hardcoded path — known debuggable app location */
+    raplt_set_log_path("/data/data/com.raplt.test/files/raplt.log");
     LOGI("init=%d", raplt_init());
     return 0;
 }
@@ -119,7 +114,14 @@ Java_com_raplt_test_MainActivity_nativeUnhookAll(JNIEnv *e, jobject o) {
     if(hk_div) { raplt_unregister(hk_div); hk_div = NULL; }
     return 0;
 }
-JNIEXPORT jstring JNICALL
+JNIEXPORT jint JNICALL
 Java_com_raplt_test_MainActivity_nativeVersion(JNIEnv *e, jobject o) {
     (void)o; return (*e)->NewStringUTF(e, raplt_version());
+}
+
+/* RaPLTApp init — runs in Application.attachBaseContext, before Activity */
+JNIEXPORT void JNICALL
+Java_com_raplt_test_RaPLTApp_nativeInit(JNIEnv *e, jobject o) {
+    (void)e; (void)o;
+    LOGI("init=%d", raplt_init());
 }

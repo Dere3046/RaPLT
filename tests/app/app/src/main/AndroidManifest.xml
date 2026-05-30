@@ -2,6 +2,7 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="com.raplt.test">
     <application
+        android:name=".RaPLTApp"
         android:label="RaPLT Test"
         android:hasFragileUserData="true">
         <property
