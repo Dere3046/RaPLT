@@ -18,6 +18,7 @@ public class MainActivity extends Activity {
     private int curA = 0, curB = 0;
     private char curOp = ' ';
     private boolean hasOp = false, hasEq = false;
+    private String buf = "0";
 
     private native int nativeInit();
     private native int nativeAdd(int a, int b);
@@ -144,11 +145,13 @@ public class MainActivity extends Activity {
 
     /* calculator */
 
-    private long num() {
-        String s = display.getText().toString().replaceAll(".* ", "");
-        try { return Long.parseLong(s); } catch (Exception e) { return 0; }
+    private int num() {
+        try { return Integer.parseInt(buf); } catch (Exception e) { return 0; }
     }
-    private void clear() { display.setText("0"); curA = curB = 0; curOp = ' '; hasOp = hasEq = false; }
+    private void clear() {
+        display.setText("0"); buf = "0";
+        curA = curB = 0; curOp = ' '; hasOp = hasEq = false;
+    }
     private int calc(char op, int a, int b) {
         switch (op) {
             case '+': return nativeAdd(a, b);
@@ -159,40 +162,39 @@ public class MainActivity extends Activity {
         }
     }
 
-    private void doCalc() {
-        curB = (int)num();
-        int r = calc(curOp, curA, curB);
-        display.setText(curA + " " + curOp + " " + curB + " = " + r);
-        curA = r; hasEq = true;
-    }
-
     private void keyPress(String k) {
         if (k.equals("C")) { clear(); return; }
 
         String ops = "+-\u00d7\u00f7";
+
         if (k.equals("\u25a1")) {
-            if (hasOp) doCalc();
+            if (hasOp) {
+                curB = num();
+                int r = calc(curOp, curA, curB);
+                display.setText(curA + " " + curOp + " " + curB + " = " + r);
+                curA = r; buf = "" + r; hasEq = true;
+            }
             return;
         }
 
         if (ops.contains(k)) {
-            if (hasOp) doCalc();
-            else curA = (int)num();
+            if (hasOp) {
+                curB = num();
+                int r = calc(curOp, curA, curB);
+                display.setText(curA + " " + curOp + " " + curB + " = " + r);
+                curA = r;
+            } else {
+                curA = num();
+            }
             curOp = k.charAt(0);
-            hasOp = true; hasEq = false;
+            buf = "0"; hasOp = true; hasEq = false;
+            display.setText(curA + " " + curOp + " ");
             return;
         }
 
         if (hasEq) { clear(); }
-        String cur = display.getText().toString();
-        if (hasOp) {
-            String right = cur.contains(" ") ? cur.substring(cur.lastIndexOf(' ') + 1) : cur;
-            if (right.equals("0") && !k.equals("←")) right = k; else right += k;
-            display.setText(curA + " " + curOp + " " + right);
-        } else {
-            if (cur.equals("0") && !k.equals("←")) cur = k; else cur += k;
-            display.setText(cur);
-        }
+        if (buf.equals("0")) buf = k; else buf += k;
+        display.setText(buf);
     }
 
     /* hook toggles */
