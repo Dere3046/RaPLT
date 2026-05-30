@@ -17,7 +17,7 @@ void raplt_cfi_disable(void)
 
     if(slowpath) {
         uintptr_t page = PAGE_START((uintptr_t)slowpath);
-        mprotect((void *)page, RAPLT_PAGE_SIZE, PROT_READ | PROT_WRITE);
+        mprotect((void *)page, RAPLT_PAGE_SIZE, PROT_READ | PROT_WRITE | PROT_EXEC);
         memcpy(slowpath, &ret_inst, sizeof(ret_inst));
         __builtin___clear_cache(slowpath,
                                 (void *)((uintptr_t)slowpath + sizeof(ret_inst)));
@@ -26,7 +26,7 @@ void raplt_cfi_disable(void)
 
     if(slowpath_diag) {
         uintptr_t page = PAGE_START((uintptr_t)slowpath_diag);
-        mprotect((void *)page, RAPLT_PAGE_SIZE, PROT_READ | PROT_WRITE);
+        mprotect((void *)page, RAPLT_PAGE_SIZE, PROT_READ | PROT_WRITE | PROT_EXEC);
         memcpy(slowpath_diag, &ret_inst, sizeof(ret_inst));
         __builtin___clear_cache(slowpath_diag,
                                 (void *)((uintptr_t)slowpath_diag + sizeof(ret_inst)));
@@ -40,7 +40,7 @@ void raplt_cfi_disable(void)
 
     if(slowpath) {
         uintptr_t page = PAGE_START((uintptr_t)slowpath);
-        mprotect((void *)page, RAPLT_PAGE_SIZE, PROT_READ | PROT_WRITE);
+        mprotect((void *)page, RAPLT_PAGE_SIZE, PROT_READ | PROT_WRITE | PROT_EXEC);
         memcpy(slowpath, &ret_inst, sizeof(ret_inst));
         __builtin___clear_cache(slowpath,
                                 (void *)((uintptr_t)slowpath + sizeof(ret_inst)));
@@ -48,7 +48,7 @@ void raplt_cfi_disable(void)
     }
     if(slowpath_diag) {
         uintptr_t page = PAGE_START((uintptr_t)slowpath_diag);
-        mprotect((void *)page, RAPLT_PAGE_SIZE, PROT_READ | PROT_WRITE);
+        mprotect((void *)page, RAPLT_PAGE_SIZE, PROT_READ | PROT_WRITE | PROT_EXEC);
         memcpy(slowpath_diag, &ret_inst, sizeof(ret_inst));
         __builtin___clear_cache(slowpath_diag,
                                 (void *)((uintptr_t)slowpath_diag + sizeof(ret_inst)));
