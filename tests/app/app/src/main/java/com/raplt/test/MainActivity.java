@@ -138,13 +138,8 @@ public class MainActivity extends Activity {
 
     private void ensureInit() {
         if (inited) return;
-        try {
-            int r = nativeInit();
-            inited = (r == 0);
-            if (inited) android.util.Log.i("RaPLT", "init ok");
-        } catch (Exception e) {
-            android.util.Log.e("RaPLT", "init crashed: " + e);
-        }
+        nativeInit();
+        inited = true;
     }
 
     /* calculator */
