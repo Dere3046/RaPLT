@@ -22,6 +22,8 @@
 #include "raplt_core.h"
 #include "raplt_cfi.h"
 
+static void flog(const char *fmt, ...) { (void)fmt; }
+
 #define RAPLT_RECURSE_STACK_MAX 16
 #define RAPLT_GOT_MAP_SIZE      256
 
