@@ -1,7 +1,5 @@
 /* references: xHook (MIT) */
 
-/* references: xHook (MIT) */
-
 #include <jni.h>
 #include <string.h>
 
