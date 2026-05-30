@@ -47,14 +47,6 @@ Java_com_raplt_test_MainActivity_nativeDiv(JNIEnv *e, jobject o, jint a, jint b)
     (void)e; (void)o; return calc_div(a, b);
 }
 
-JNIEXPORT jint JNICALL
-Java_com_raplt_test_MainActivity_nativeInit(JNIEnv *e, jobject o, jstring logdir) {
-    (void)e; (void)o; (void)logdir;
-    /* hardcoded path — known debuggable app location */
-    raplt_set_log_path("/data/data/com.raplt.test/files/raplt.log");
-    LOGI("init=%d", raplt_init());
-    return 0;
-}
 
 JNIEXPORT jint JNICALL
 Java_com_raplt_test_MainActivity_nativeHookAdd(JNIEnv *e, jobject o) {
