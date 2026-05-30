@@ -14,26 +14,6 @@
 #include <sys/mman.h>
 #include <limits.h>
 
-/* references: xHook (MIT), bhook (LGPL-2.1) */
-
-/* debug log */
-static void flog(const char *fmt, ...) {
-    (void)fmt;
-}
-
-static void flog(const char *fmt, ...) {
-    if(!g_log_path[0]) return;
-    FILE *f = fopen(g_log_path, "a");
-    if(!f) return;
-    va_list ap;
-    va_start(ap, fmt);
-    fprintf(f, "[raplt] ");
-    vfprintf(f, fmt, ap);
-    fprintf(f, "\n");
-    va_end(ap);
-    fclose(f);
-}
-
 #include "raplt_elf.h"
 #include "raplt_hash.h"
 #include "raplt_signal.h"
