@@ -13,6 +13,20 @@
 #include <dlfcn.h>
 #include <sys/mman.h>
 #include <limits.h>
+#include <stdarg.h>
+
+/* debug log — survives process death, writes to /data/local/tmp/raplt.log */
+static void flog(const char *fmt, ...) {
+    FILE *f = fopen("/data/local/tmp/raplt.log", "a");
+    if(!f) return;
+    va_list ap;
+    va_start(ap, fmt);
+    fprintf(f, "[raplt] ");
+    vfprintf(f, fmt, ap);
+    fprintf(f, "\n");
+    va_end(ap);
+    fclose(f);
+}
 
 #include "raplt_elf.h"
 #include "raplt_hash.h"
@@ -174,22 +188,34 @@ static void patch_sigsegv_handler(int sig) {
 
 static void patch_one_got(void **addr, void *new_func)
 {
+    flog("patch_one_got enter addr=%p", addr);
     unsigned int old_prot = 0;
     raplt_get_protect((uintptr_t)addr, sizeof(void *), NULL, &old_prot);
+    flog("old_prot=%x", old_prot);
     if(!(old_prot & PROT_WRITE))
-        if(raplt_set_protect((uintptr_t)addr, PROT_READ | PROT_WRITE))
+        if(raplt_set_protect((uintptr_t)addr, PROT_READ | PROT_WRITE)) {
+            flog("mprotect FAILED at %p", addr);
             return;
+        }
+    flog("mprotect OK");
 
     struct sigaction old_act, act;
     sigemptyset(&act.sa_mask);
     act.sa_handler = patch_sigsegv_handler;
     sigaction(SIGSEGV, &act, &old_act);
+    flog("sigaction installed");
 
-    if(sigsetjmp(g_patch_env, 1) == 0)
+    if(sigsetjmp(g_patch_env, 1) == 0) {
+        flog("writing GOT %p = %p", addr, new_func);
         raplt_write_got(addr, new_func);
+        flog("write OK");
+    } else {
+        flog("SIGSEGV during write at %p", addr);
+    }
 
     sigaction(SIGSEGV, &old_act, NULL);
     raplt_flush_cache((uintptr_t)addr);
+    flog("patch_one_got exit");
 }
 
 /* O(1) got_addr -> reg map (open addressing, linear probe) */
@@ -290,6 +316,7 @@ static int raplt_core_init_locked(void)
     raplt_cfi_disable();
 
     g_core.inited = 1;
+    flog("init done: %zu libs indexed", map_count);
     LOGI("core init: %zu libraries indexed", map_count);
     return 0;
 }
@@ -334,6 +361,7 @@ raplt_hook_t *raplt_register(const char *pathname_regex,
                               const char *symbol, void *new_func,
                               void **old_func, int flags)
 {
+    flog("raplt_register sym=%s", symbol ? symbol : "(null)");
     if(!symbol || !new_func) return NULL;
 
     pthread_mutex_lock(&g_core.mutex);
@@ -403,6 +431,7 @@ raplt_hook_t *raplt_register(const char *pathname_regex,
     g_core.hooks_count++;
 
     LOGI("register %s -> %p in %zu entries", symbol, new_func, reg->entry_count);
+    flog("register ok %s entries=%zu patched=%d", symbol, reg->entry_count, reg->patched);
     pthread_mutex_unlock(&g_core.mutex);
 
     static volatile int dl_init_done = 0;
