@@ -675,6 +675,14 @@ int raplt_hooks_finalize(void)
     return 0;
 }
 
+int raplt_init(void)
+{
+    pthread_mutex_lock(&g_core.mutex);
+    int r = raplt_core_init_locked();
+    pthread_mutex_unlock(&g_core.mutex);
+    return r;
+}
+
 void raplt_enable_reconstruction(int enable) { (void)enable; }
 
 void raplt_enable_debug(int enable)      { (void)enable; }
