@@ -13,6 +13,7 @@ public class MainActivity extends Activity {
     private TextView display;
     private Button[] hk = new Button[4];
     private boolean[] hkOn = new boolean[4];
+    private volatile boolean inited = false;
 
     private int curA = 0, curB = 0;
     private char curOp = ' ';
@@ -39,8 +40,16 @@ public class MainActivity extends Activity {
     protected void onCreate(Bundle s) {
         super.onCreate(s);
 
-        /* init raplt early — avoids 5s ANR on button click */
-        nativeInit();
+        /* init raplt in background — don't block UI thread */
+        new Thread(() -> {
+            android.util.Log.i("RaPLT", "init start");
+            nativeInit();
+            android.util.Log.i("RaPLT", "init done");
+            runOnUiThread(() -> {
+                inited = true;
+                Toast.makeText(this, "RaPLT ready", Toast.LENGTH_SHORT).show();
+            });
+        }).start();
 
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
@@ -85,7 +94,7 @@ public class MainActivity extends Activity {
         applyAll.setTextSize(14);
         applyAll.setBackgroundColor(Color.parseColor("#0f3460"));
         applyAll.setTextColor(Color.WHITE);
-        applyAll.setOnClickListener(v -> { for (int i = 0; i < 4; i++) { if (!hkOn[i]) toggleHook(i); } });
+        applyAll.setOnClickListener(v -> { if (!inited) { Toast.makeText(this,"initializing...",0).show(); return; } for (int i = 0; i < 4; i++) { if (!hkOn[i]) toggleHook(i); } });
         brow.addView(applyAll, new LinearLayout.LayoutParams(0, dp(40), 1));
         Button restoreAll = new Button(this);
         restoreAll.setText("Restore All");
@@ -196,6 +205,10 @@ public class MainActivity extends Activity {
     /* hook toggles */
 
     private void toggleHook(int i) {
+        if (!inited) {
+            Toast.makeText(this, "initializing...", Toast.LENGTH_SHORT).show();
+            return;
+        }
         try {
             if (hkOn[i]) {
                 if (i == 0) nativeUnhookAdd();
