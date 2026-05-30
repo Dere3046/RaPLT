@@ -20,7 +20,7 @@ public class MainActivity extends Activity {
     private boolean hasOp = false, hasEq = false;
     private String buf = "0";
 
-    private native int nativeInit();
+    private native int nativeInit(String logdir);
     private native int nativeAdd(int a, int b);
     private native int nativeSub(int a, int b);
     private native int nativeMul(int a, int b);
@@ -42,8 +42,9 @@ public class MainActivity extends Activity {
 
         /* init raplt in background — don't block UI thread */
         new Thread(() -> {
-            android.util.Log.i("RaPLT", "init start");
-            nativeInit();
+            String dir = getFilesDir().getAbsolutePath();
+            android.util.Log.i("RaPLT", "init start dir=" + dir);
+            nativeInit(dir);
             android.util.Log.i("RaPLT", "init done");
             runOnUiThread(() -> {
                 inited = true;
