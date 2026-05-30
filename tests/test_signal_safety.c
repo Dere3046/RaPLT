@@ -30,7 +30,6 @@ int main(void)
     ASSERT(raplt_signal_init() == 0, "second init failed");
 
     T("SIGSEGV guard: caught fault returns 1");
-    raplt_signal_guard_init();
     int caught = raplt_signal_guard_enter();
     if(caught == 0) {
         /* trigger SIGSEGV */

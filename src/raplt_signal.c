@@ -32,8 +32,6 @@ static struct {
     int                 guard_enable;
     volatile int        guard_flag;
     sigjmp_buf          guard_env;
-    struct sigaction    guard_old_act;
-    int                 guard_inited;
 
     struct sigaction    old_sigill;
     struct sigaction    old_sigsegv;
@@ -43,7 +41,6 @@ static struct {
     .count = 0,
     .guard_enable = 1,
     .guard_flag = 0,
-    .guard_inited = 0,
     .handlers_installed = 0,
 };
 
@@ -85,6 +82,9 @@ static raplt_lazy_site_t *find_lazy_site(void *addr)
 
 void raplt_signal_handler(int sig, siginfo_t *info, void *ucontext)
 {
+    if(sig == SIGSEGV && g_sig.guard_flag) {
+        siglongjmp(g_sig.guard_env, 1);
+    }
     uintptr_t fault_addr = get_fault_addr(info);
     uintptr_t *pc = get_pc_ptr(ucontext);
     raplt_lazy_site_t *site = find_lazy_site((void *)fault_addr);
@@ -186,31 +186,9 @@ void raplt_signal_clear_lazy(void)
     pthread_mutex_unlock(&g_sig.mutex);
 }
 
-static void raplt_guard_handler(int sig)
-{
-    (void)sig;
-    if(g_sig.guard_flag)
-        siglongjmp(g_sig.guard_env, 1);
-    else if(g_sig.guard_inited)
-        sigaction(SIGSEGV, &g_sig.guard_old_act, NULL);
-}
-
-int raplt_signal_guard_init(void)
-{
-    if(g_sig.guard_inited) return 0;
-    if(!g_sig.guard_enable) return 0;
-
-    struct sigaction act;
-    sigemptyset(&act.sa_mask);
-    act.sa_handler = raplt_guard_handler;
-    if(sigaction(SIGSEGV, &act, &g_sig.guard_old_act)) return -errno;
-    g_sig.guard_inited = 1;
-    return 0;
-}
-
 int raplt_signal_guard_enter(void)
 {
-    if(!g_sig.guard_enable || !g_sig.guard_inited) return 0;
+    if(!g_sig.guard_enable) return 0;
     g_sig.guard_flag = 1;
     if(sigsetjmp(g_sig.guard_env, 1) == 0)
         return 0;
