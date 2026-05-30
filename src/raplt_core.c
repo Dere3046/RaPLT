@@ -269,7 +269,6 @@ static int raplt_core_init_locked(void)
     }
 
     raplt_signal_init();
-    raplt_signal_guard_init();
 
     for(size_t i = 0; i < map_count; i++) {
         if(is_ignored(maps[i].pathname)) continue;

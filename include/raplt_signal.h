@@ -30,8 +30,6 @@ int raplt_signal_is_lazy_site(void **addr);
 
 void raplt_signal_clear_lazy(void);
 
-int raplt_signal_guard_init(void);
-
 int raplt_signal_guard_enter(void);
 
 void raplt_signal_guard_exit(void);
