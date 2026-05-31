@@ -198,9 +198,12 @@ static int raplt_patch_got_entry(void **addr, void *value)
         return 0;
     }
     void *page_backup = NULL;
-    if (raplt_mremap_patch_page(page, addr, value, 1, &page_backup) == 0) {
-        add_mremap_page(page, page_backup);
-        return 0;
+    {
+        void *got_array[1] = { (void *)addr };
+        if (raplt_mremap_patch_page(page, got_array, value, 1, &page_backup) == 0) {
+            add_mremap_page(page, page_backup);
+            return 0;
+        }
     }
     unsigned int old_prot = 0;
     raplt_get_protect((uintptr_t)addr, sizeof(void *), NULL, &old_prot);
