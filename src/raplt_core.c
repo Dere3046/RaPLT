@@ -118,6 +118,22 @@ static void add_mremap_region(uintptr_t start, uintptr_t end, void *backup)
     }
 }
 
+#define RAPLT_MAX_ALL_REGIONS 1024
+static struct {
+    uintptr_t     start;
+    uintptr_t     end;
+    unsigned int  perms;
+} g_all_regions[RAPLT_MAX_ALL_REGIONS];
+static int g_all_region_count = 0;
+
+static int find_region(uintptr_t addr)
+{
+    for (int i = 0; i < g_all_region_count; i++)
+        if (addr >= g_all_regions[i].start && addr < g_all_regions[i].end)
+            return i;
+    return -1;
+}
+
 static pthread_key_t g_recursion_key;
 static pthread_once_t g_recursion_key_once = PTHREAD_ONCE_INIT;
 
@@ -196,15 +212,15 @@ static raplt_lib_t *find_lib_for_addr(void **addr)
 {
     for(raplt_lib_t *lib = g_core.libs; lib; lib = lib->next)
         if((uintptr_t)addr >= lib->memory_base &&
-           (uintptr_t)addr < lib->region_end)
+           (uintptr_t)addr < lib->memory_base + 0x1000000)
             return lib;
     return NULL;
 }
 
 static int raplt_patch_got_entry(void **addr, void *value)
 {
-    raplt_lib_t *lib = find_lib_for_addr(addr);
-    if (!lib) return -1;
+    int region_idx = find_region((uintptr_t)addr);
+    if (region_idx < 0) return -1;
 
     int idx = find_mremap_region((uintptr_t)addr);
     if (idx >= 0) {
@@ -214,10 +230,12 @@ static int raplt_patch_got_entry(void **addr, void *value)
     void *backup_ptr = NULL;
     {
         void *got_array[1] = { (void *)addr };
-        if (raplt_mremap_patch_region(lib->memory_base, lib->region_end,
-                                       lib->perms,
+        uintptr_t start  = g_all_regions[region_idx].start;
+        uintptr_t end    = g_all_regions[region_idx].end;
+        unsigned int perms = g_all_regions[region_idx].perms;
+        if (raplt_mremap_patch_region(start, end, perms,
                                        got_array, value, 1, &backup_ptr) == 0) {
-            add_mremap_region(lib->memory_base, lib->region_end, backup_ptr);
+            add_mremap_region(start, end, backup_ptr);
             return 0;
         }
     }
@@ -291,6 +309,16 @@ static int raplt_core_init_locked(void)
         if(is_ignored(maps[i].pathname)) continue;
         if(is_self_lib(maps[i].pathname)) continue;
 
+        if(g_all_region_count < RAPLT_MAX_ALL_REGIONS) {
+            g_all_regions[g_all_region_count].start = maps[i].base_addr;
+            g_all_regions[g_all_region_count].end   = maps[i].end_addr;
+            g_all_regions[g_all_region_count].perms =
+                (maps[i].prot_read  ? PROT_READ  : 0) |
+                (maps[i].prot_write ? PROT_WRITE : 0) |
+                (maps[i].prot_exec  ? PROT_EXEC  : 0);
+            g_all_region_count++;
+        }
+
         raplt_lib_t *lib = calloc(1, sizeof(raplt_lib_t));
         if(!lib) continue;
 
@@ -306,11 +334,6 @@ static int raplt_core_init_locked(void)
         if(r != 0) { raplt_signal_guard_exit(); free(lib); continue; }
 
         raplt_signal_guard_exit();
-
-        lib->region_end = maps[i].end_addr;
-        lib->perms      = (maps[i].prot_read  ? PROT_READ  : 0) |
-                          (maps[i].prot_write ? PROT_WRITE : 0) |
-                          (maps[i].prot_exec  ? PROT_EXEC  : 0);
 
         if(raplt_elf_build_got_index(lib)) {
             raplt_elf_fini(lib); free(lib); continue;
