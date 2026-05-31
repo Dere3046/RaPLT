@@ -94,6 +94,9 @@ struct raplt_lib {
 
     struct raplt_sym_index *got_index;
     raplt_lib_t *next;
+
+    uintptr_t    region_end;
+    unsigned int perms;
 };
 
 typedef int (*raplt_got_callback_t)(raplt_lib_t       *lib,

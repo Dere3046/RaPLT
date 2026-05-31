@@ -10,11 +10,12 @@
 extern "C" {
 #endif
 
-int raplt_mremap_patch_page(uintptr_t page_start,
-                             void **got_entries, void *new_func,
-                             int count, void **backup_out);
+int raplt_mremap_patch_region(uintptr_t start, uintptr_t end,
+                               unsigned int orig_perms,
+                               void **got_entries, void *new_func,
+                               int count, void **backup_out);
 
-int raplt_mremap_restore_page(uintptr_t page_start, void *backup);
+int raplt_mremap_restore_region(uintptr_t start, uintptr_t end, void *backup);
 
 #ifdef __cplusplus
 }
