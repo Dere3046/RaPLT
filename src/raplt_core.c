@@ -94,24 +94,27 @@ static struct {
 };
 
 static struct {
-    uintptr_t  page;
+    uintptr_t  start;
+    uintptr_t  end;
     void      *backup;
-} g_mremap_pages[RAPLT_MAX_MREMAP_PAGES];
-static int g_mremap_page_count = 0;
+} g_mremap_regions[RAPLT_MAX_MREMAP_PAGES];
+static int g_mremap_region_count = 0;
 
-static int find_mremap_page(uintptr_t page)
+static int find_mremap_region(uintptr_t addr)
 {
-    for (int i = 0; i < g_mremap_page_count; i++)
-        if (g_mremap_pages[i].page == page) return i;
+    for (int i = 0; i < g_mremap_region_count; i++)
+        if (addr >= g_mremap_regions[i].start && addr < g_mremap_regions[i].end)
+            return i;
     return -1;
 }
 
-static void add_mremap_page(uintptr_t page, void *backup)
+static void add_mremap_region(uintptr_t start, uintptr_t end, void *backup)
 {
-    if (g_mremap_page_count < RAPLT_MAX_MREMAP_PAGES) {
-        g_mremap_pages[g_mremap_page_count].page   = page;
-        g_mremap_pages[g_mremap_page_count].backup = backup;
-        g_mremap_page_count++;
+    if (g_mremap_region_count < RAPLT_MAX_MREMAP_PAGES) {
+        g_mremap_regions[g_mremap_region_count].start  = start;
+        g_mremap_regions[g_mremap_region_count].end    = end;
+        g_mremap_regions[g_mremap_region_count].backup = backup;
+        g_mremap_region_count++;
     }
 }
 
@@ -189,19 +192,32 @@ static int detect_caller_lib(char *buf, size_t bufsz)
     return -1;
 }
 
+static raplt_lib_t *find_lib_for_addr(void **addr)
+{
+    for(raplt_lib_t *lib = g_core.libs; lib; lib = lib->next)
+        if((uintptr_t)addr >= lib->memory_base &&
+           (uintptr_t)addr < lib->region_end)
+            return lib;
+    return NULL;
+}
+
 static int raplt_patch_got_entry(void **addr, void *value)
 {
-    uintptr_t page = PAGE_START((uintptr_t)addr);
-    int idx = find_mremap_page(page);
+    raplt_lib_t *lib = find_lib_for_addr(addr);
+    if (!lib) return -1;
+
+    int idx = find_mremap_region((uintptr_t)addr);
     if (idx >= 0) {
         raplt_write_got(addr, value);
         return 0;
     }
-    void *page_backup = NULL;
+    void *backup_ptr = NULL;
     {
         void *got_array[1] = { (void *)addr };
-        if (raplt_mremap_patch_page(page, got_array, value, 1, &page_backup) == 0) {
-            add_mremap_page(page, page_backup);
+        if (raplt_mremap_patch_region(lib->memory_base, lib->region_end,
+                                       lib->perms,
+                                       got_array, value, 1, &backup_ptr) == 0) {
+            add_mremap_region(lib->memory_base, lib->region_end, backup_ptr);
             return 0;
         }
     }
@@ -257,15 +273,6 @@ static void got_map_remove(void **addr)
     }
 }
 
-static raplt_lib_t *find_lib_for_addr(void **addr)
-{
-    for(raplt_lib_t *lib = g_core.libs; lib; lib = lib->next)
-        if((uintptr_t)addr >= lib->memory_base &&
-           (uintptr_t)addr < lib->memory_base + 0x1000000)
-            return lib;
-    return NULL;
-}
-
 static int raplt_core_init_locked(void)
 {
     if(g_core.inited) return 0;
@@ -299,6 +306,11 @@ static int raplt_core_init_locked(void)
         if(r != 0) { raplt_signal_guard_exit(); free(lib); continue; }
 
         raplt_signal_guard_exit();
+
+        lib->region_end = maps[i].end_addr;
+        lib->perms      = (maps[i].prot_read  ? PROT_READ  : 0) |
+                          (maps[i].prot_write ? PROT_WRITE : 0) |
+                          (maps[i].prot_exec  ? PROT_EXEC  : 0);
 
         if(raplt_elf_build_got_index(lib)) {
             raplt_elf_fini(lib); free(lib); continue;

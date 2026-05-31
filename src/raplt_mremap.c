@@ -1,7 +1,7 @@
 /* references: ShadowHook (MIT), Linux mremap(2)
  *
  * mremap-based GOT page patching.
- * Atomically replaces a GOT page with a writable copy via mremap,
+ * Atomically replaces a mapped region with a writable copy via mremap,
  * avoiding mprotect + W^X issues on modern Android.
  */
 
@@ -52,54 +52,59 @@ static void *sys_mremap(void *old_addr, size_t old_len, size_t new_len,
 #endif
 }
 
-int raplt_mremap_patch_page(uintptr_t page_start,
-                             void **got_entries, void *new_func,
-                             int count, void **backup_out)
+int raplt_mremap_patch_region(uintptr_t start, uintptr_t end,
+                               unsigned int orig_perms,
+                               void **got_entries, void *new_func,
+                               int count, void **backup_out)
 {
-    void *page = (void *)page_start;
+    void  *orig = (void *)start;
+    size_t len  = end - start;
+    size_t ps   = RAPLT_PAGE_SIZE;
 
-    void *backup = mmap(NULL, RAPLT_PAGE_SIZE, PROT_NONE,
+    void *backup = mmap(NULL, len, PROT_NONE,
                         MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
     if (backup == MAP_FAILED) return -1;
 
-    void *result = sys_mremap(page, RAPLT_PAGE_SIZE, RAPLT_PAGE_SIZE,
+    void *result = sys_mremap(orig, len, len,
                                MREMAP_FIXED | MREMAP_MAYMOVE | MREMAP_DONTUNMAP,
                                backup);
     if (result == MAP_FAILED || result != backup) {
-        /* kernel too old for DONTUNMAP, retry without it */
-        result = sys_mremap(page, RAPLT_PAGE_SIZE, RAPLT_PAGE_SIZE,
+        result = sys_mremap(orig, len, len,
                              MREMAP_FIXED | MREMAP_MAYMOVE, backup);
         if (result == MAP_FAILED || result != backup) {
-            munmap(backup, RAPLT_PAGE_SIZE);
+            munmap(backup, len);
             return -1;
         }
     }
 
-    result = mmap(page, RAPLT_PAGE_SIZE, PROT_READ | PROT_WRITE,
+    result = mmap(orig, len, PROT_READ | PROT_WRITE | orig_perms,
                   MAP_PRIVATE | MAP_FIXED | MAP_ANONYMOUS, -1, 0);
     if (result == MAP_FAILED) {
-        sys_mremap(backup, RAPLT_PAGE_SIZE, RAPLT_PAGE_SIZE,
-                    MREMAP_FIXED | MREMAP_MAYMOVE, page);
-        munmap(backup, RAPLT_PAGE_SIZE);
+        sys_mremap(backup, len, len,
+                    MREMAP_FIXED | MREMAP_MAYMOVE, orig);
+        munmap(backup, len);
         return -1;
     }
 
-    memcpy(page, backup, RAPLT_PAGE_SIZE);
+    for (size_t src = (size_t)backup, dst = start;
+         dst < start + len; src += ps, dst += ps)
+        memcpy((void *)dst, (void *)src, ps);
 
     for (int i = 0; i < count; i++)
         *(void **)got_entries[i] = new_func;
 
-    __builtin___clear_cache(page, (void *)(page_start + RAPLT_PAGE_SIZE));
+    __builtin___clear_cache(orig, (void *)end);
 
     *backup_out = backup;
     return 0;
 }
 
-int raplt_mremap_restore_page(uintptr_t page_start, void *backup)
+int raplt_mremap_restore_region(uintptr_t start, uintptr_t end, void *backup)
 {
-    void *result = sys_mremap(backup, RAPLT_PAGE_SIZE, RAPLT_PAGE_SIZE,
-                               MREMAP_FIXED | MREMAP_MAYMOVE, (void *)page_start);
-    if (result == MAP_FAILED || (uintptr_t)result != page_start)
+    size_t len = end - start;
+    void *result = sys_mremap(backup, len, len,
+                               MREMAP_FIXED | MREMAP_MAYMOVE, (void *)start);
+    if (result == MAP_FAILED || (uintptr_t)result != start)
         return -1;
     return 0;
 }
