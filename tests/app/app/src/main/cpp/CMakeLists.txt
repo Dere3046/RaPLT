@@ -17,6 +17,7 @@ add_library(raplt STATIC
     ${RAPLT_ROOT}/src/raplt_recon.c
     ${RAPLT_ROOT}/src/raplt_dlopen.c
     ${RAPLT_ROOT}/src/raplt_cfi.c
+    ${RAPLT_ROOT}/src/raplt_mremap.c
 )
 target_include_directories(raplt PUBLIC ${RAPLT_ROOT}/include)
 target_compile_options(raplt PRIVATE -Wall -fvisibility=hidden -Wno-unused-parameter -Wno-unused-function)

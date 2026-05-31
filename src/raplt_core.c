@@ -1,4 +1,4 @@
-/* references: xHook (MIT), bhook (LGPL-2.1) */
+/* references: xHook (MIT), bhook (LGPL-2.1), ShadowHook (MIT) */
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -7,8 +7,6 @@
 #include <unistd.h>
 #include <errno.h>
 #include <pthread.h>
-#include <signal.h>
-#include <setjmp.h>
 #include <regex.h>
 #include <dlfcn.h>
 #include <sys/mman.h>
@@ -21,10 +19,12 @@
 #include "raplt_log.h"
 #include "raplt_core.h"
 #include "raplt_cfi.h"
+#include "raplt_mremap.h"
 
 static void flog(const char *fmt, ...) { (void)fmt; }
 
 #define RAPLT_RECURSE_STACK_MAX 16
+#define RAPLT_MAX_MREMAP_PAGES  256
 #define RAPLT_GOT_MAP_SIZE      256
 
 typedef struct {
@@ -92,6 +92,28 @@ static struct {
     .inited = 0,
     .exclude_self = 1,
 };
+
+static struct {
+    uintptr_t  page;
+    void      *backup;
+} g_mremap_pages[RAPLT_MAX_MREMAP_PAGES];
+static int g_mremap_page_count = 0;
+
+static int find_mremap_page(uintptr_t page)
+{
+    for (int i = 0; i < g_mremap_page_count; i++)
+        if (g_mremap_pages[i].page == page) return i;
+    return -1;
+}
+
+static void add_mremap_page(uintptr_t page, void *backup)
+{
+    if (g_mremap_page_count < RAPLT_MAX_MREMAP_PAGES) {
+        g_mremap_pages[g_mremap_page_count].page   = page;
+        g_mremap_pages[g_mremap_page_count].backup = backup;
+        g_mremap_page_count++;
+    }
+}
 
 static pthread_key_t g_recursion_key;
 static pthread_once_t g_recursion_key_once = PTHREAD_ONCE_INIT;
@@ -167,43 +189,28 @@ static int detect_caller_lib(char *buf, size_t bufsz)
     return -1;
 }
 
-static sigjmp_buf g_patch_env;
-
-static void patch_sigsegv_handler(int sig) {
-    (void)sig;
-    siglongjmp(g_patch_env, 1);
-}
-
-static void patch_one_got(void **addr, void *new_func)
+static int raplt_patch_got_entry(void **addr, void *value)
 {
-    flog("patch_one_got enter addr=%p", addr);
+    uintptr_t page = PAGE_START((uintptr_t)addr);
+    int idx = find_mremap_page(page);
+    if (idx >= 0) {
+        raplt_write_got(addr, value);
+        return 0;
+    }
+    void *page_backup = NULL;
+    if (raplt_mremap_patch_page(page, addr, value, 1, &page_backup) == 0) {
+        add_mremap_page(page, page_backup);
+        return 0;
+    }
     unsigned int old_prot = 0;
     raplt_get_protect((uintptr_t)addr, sizeof(void *), NULL, &old_prot);
-    flog("old_prot=%x", old_prot);
-    if(!(old_prot & PROT_WRITE))
-        if(raplt_set_protect((uintptr_t)addr, PROT_READ | PROT_WRITE)) {
-            flog("mprotect FAILED at %p", addr);
-            return;
-        }
-    flog("mprotect OK");
-
-    struct sigaction old_act, act;
-    sigemptyset(&act.sa_mask);
-    act.sa_handler = patch_sigsegv_handler;
-    sigaction(SIGSEGV, &act, &old_act);
-    flog("sigaction installed");
-
-    if(sigsetjmp(g_patch_env, 1) == 0) {
-        flog("writing GOT %p = %p", addr, new_func);
-        raplt_write_got(addr, new_func);
-        flog("write OK");
-    } else {
-        flog("SIGSEGV during write at %p", addr);
-    }
-
-    sigaction(SIGSEGV, &old_act, NULL);
+    if (!(old_prot & PROT_WRITE))
+        if (raplt_set_protect((uintptr_t)addr, PROT_READ | PROT_WRITE)) return -1;
+    raplt_write_got(addr, value);
+    if (!(old_prot & PROT_WRITE))
+        raplt_set_protect((uintptr_t)addr, old_prot);
     raplt_flush_cache((uintptr_t)addr);
-    flog("patch_one_got exit");
+    return 0;
 }
 
 /* O(1) got_addr -> reg map (open addressing, linear probe) */
@@ -334,7 +341,7 @@ static int raplt_patch_registration(raplt_registration_t *reg)
             patched++;
         } else {
             backup = raplt_read_got(addr);
-            patch_one_got(addr, reg->new_func);
+            raplt_patch_got_entry(addr, reg->new_func);
             entries[i].original = backup;
             patched++;
         }
@@ -486,7 +493,7 @@ int raplt_unregister(raplt_hook_t *hook)
                 /* tier 1: re-resolve from .dynsym st_value */
                 void *correct = NULL;
                 if(lib && raplt_elf_resolve_st_value(lib, reg->symbol, &correct) == 0) {
-                    patch_one_got(got_addr, correct);
+                    raplt_patch_got_entry(got_addr, correct);
                     continue;
                 }
 
@@ -498,7 +505,7 @@ int raplt_unregister(raplt_hook_t *hook)
 
                 /* tier 3: cached original fallback */
                 if(reg->entries[i].original) {
-                    patch_one_got(got_addr, reg->entries[i].original);
+                    raplt_patch_got_entry(got_addr, reg->entries[i].original);
                     continue;
                 }
 
@@ -538,7 +545,7 @@ int raplt_lazy_resolve(void *got_entry)
     raplt_registration_t *reg = got_map_lookup(got_entry);
     if(!reg) return -1;
 
-    patch_one_got((void **)got_entry, reg->new_func);
+    raplt_patch_got_entry((void **)got_entry, reg->new_func);
     LOGI("lazy resolve %s @ %p", reg->symbol, got_entry);
     return 0;
 }
@@ -663,7 +670,7 @@ void rescan_libraries(void)
             for(size_t j = 0; j < cnt; j++) {
                 reg->entries[old_n + j] = new_entries[j];
                 got_map_insert(new_entries[j].addr, reg);
-                patch_one_got(new_entries[j].addr, reg->new_func);
+                raplt_patch_got_entry(new_entries[j].addr, reg->new_func);
                 reg->entry_count++;
             }
         }
@@ -716,7 +723,7 @@ void raplt_clear(void)
         for(size_t i = 0; i < reg->entry_count; i++) {
             got_map_remove(reg->entries[i].addr);
             if(reg->entries[i].original)
-                patch_one_got(reg->entries[i].addr, reg->entries[i].original);
+                raplt_patch_got_entry(reg->entries[i].addr, reg->entries[i].original);
         }
         g_core.hooks = reg->next;
         free(reg->symbol); free(reg->entries); free(reg);

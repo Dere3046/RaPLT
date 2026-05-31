@@ -12,7 +12,8 @@ RA_SRC  = ../src
 RA_OBJS = $(RA_SRC)/raplt_core.o $(RA_SRC)/raplt_elf.o \
           $(RA_SRC)/raplt_hash.o $(RA_SRC)/raplt_signal.o \
           $(RA_SRC)/raplt_util.o $(RA_SRC)/raplt_recon.o \
-          $(RA_SRC)/raplt_cfi.o $(RA_SRC)/raplt_dlopen.o
+          $(RA_SRC)/raplt_cfi.o $(RA_SRC)/raplt_dlopen.o \
+          $(RA_SRC)/raplt_mremap.o
 
 LDFLAGS = -ldl -lpthread -lm
 
@@ -51,6 +52,9 @@ $(RA_SRC)/raplt_cfi.o: $(RA_SRC)/raplt_cfi.c
 	$(CC) $(CFLAGS) $(INCLUDE) -c -o $@ $<
 
 $(RA_SRC)/raplt_dlopen.o: $(RA_SRC)/raplt_dlopen.c
+	$(CC) $(CFLAGS) $(INCLUDE) -c -o $@ $<
+
+$(RA_SRC)/raplt_mremap.o: $(RA_SRC)/raplt_mremap.c
 	$(CC) $(CFLAGS) $(INCLUDE) -c -o $@ $<
 
 # standalone tests (no raplt library needed)
