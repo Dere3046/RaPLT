@@ -37,6 +37,8 @@ typedef struct {
 
 int raplt_scan_maps(raplt_map_entry_t **entries, size_t *count);
 
+int raplt_scan_all_maps(raplt_map_entry_t **entries, size_t *count);
+
 void raplt_free_maps(raplt_map_entry_t *entries, size_t count);
 
 int raplt_get_protect(uintptr_t addr, size_t len,

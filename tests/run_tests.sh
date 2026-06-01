@@ -17,6 +17,8 @@ tests=(
     test_core
     test_got_patch
     test_signal_safety
+    test_hook
+    test_region
 )
 
 echo "=========================================="

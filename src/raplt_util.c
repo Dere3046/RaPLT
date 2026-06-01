@@ -157,6 +157,78 @@ int raplt_scan_maps(raplt_map_entry_t **entries, size_t *count)
     return 0;
 }
 
+int raplt_scan_all_maps(raplt_map_entry_t **entries, size_t *count)
+{
+    char       line[512];
+    FILE      *fp;
+    uintptr_t  base_addr, end_addr;
+    char       perm[5], dev_str[16];
+    unsigned long inode_num, offset;
+    int        pathname_pos;
+    char      *pathname;
+    size_t     pathname_len, cap = 128, cnt = 0;
+    raplt_map_entry_t *arr;
+
+    if(NULL == (fp = fopen("/proc/self/maps", "r")))
+        return -errno;
+
+    arr = malloc(cap * sizeof(raplt_map_entry_t));
+    if(!arr) { fclose(fp); return -ENOMEM; }
+
+    while(fgets(line, sizeof(line), fp))
+    {
+        if(sscanf(line, "%"SCNxPTR"-%"SCNxPTR" %4s %lx %15s %lu%n",
+                  &base_addr, &end_addr, perm, &offset, dev_str,
+                  &inode_num, &pathname_pos) < 6)
+            continue;
+
+        if(perm[3] != 'p') continue;
+        if(perm[0] != 'r') continue;
+
+        while(pathname_pos < (int)(sizeof(line) - 1) &&
+              line[pathname_pos] == ' ')
+            pathname_pos++;
+        if(pathname_pos >= (int)(sizeof(line) - 1)) continue;
+        pathname = line + pathname_pos;
+        pathname_len = strlen(pathname);
+        if(pathname_len == 0) continue;
+        if(pathname[pathname_len - 1] == '\n')
+            pathname[pathname_len - 1] = '\0';
+        if(pathname[0] == '[') continue;
+
+        dev_t dev = 0;
+        char *sep = strchr(dev_str, ':');
+        if(sep) {
+            *sep = '\0';
+            dev = makedev(strtoul(dev_str, NULL, 16),
+                         strtoul(sep + 1, NULL, 16));
+        }
+
+        if(cnt >= cap) {
+            cap *= 2;
+            raplt_map_entry_t *tmp = realloc(arr, cap * sizeof(raplt_map_entry_t));
+            if(!tmp) { free(arr); fclose(fp); return -ENOMEM; }
+            arr = tmp;
+        }
+
+        arr[cnt].pathname = strdup(pathname);
+        arr[cnt].base_addr = base_addr;
+        arr[cnt].end_addr = end_addr;
+        arr[cnt].dev = dev;
+        arr[cnt].inode = (ino_t)inode_num;
+        arr[cnt].prot_read  = (perm[0] == 'r');
+        arr[cnt].prot_write = (perm[1] == 'w');
+        arr[cnt].prot_exec  = (perm[2] == 'x');
+        arr[cnt].is_private = (perm[3] == 'p');
+        cnt++;
+    }
+
+    fclose(fp);
+    *entries = arr;
+    *count = cnt;
+    return 0;
+}
+
 void raplt_free_maps(raplt_map_entry_t *entries, size_t count)
 {
     for(size_t i = 0; i < count; i++)

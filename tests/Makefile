@@ -18,8 +18,9 @@ RA_OBJS = $(RA_SRC)/raplt_core.o $(RA_SRC)/raplt_elf.o \
 LDFLAGS = -ldl -lpthread -lm
 
 TESTS   = test_elf test_hash test_sleb128 test_core \
-          test_got_patch test_batch test_signal_safety
-TARGETS = libtestfixture.so $(TESTS)
+          test_got_patch test_batch test_signal_safety \
+          test_hook test_region
+TARGETS = libtestfixture.so libtest_hook_caller.so $(TESTS)
 
 .PHONY: all clean test
 
@@ -28,6 +29,10 @@ all: $(TARGETS)
 libtestfixture.so: test_fixture.c
 	$(CC) $(CFLAGS) -shared -fPIC -fvisibility=default \
 		-o $@ $< $(LDFLAGS)
+
+libtest_hook_caller.so: test_hook_caller.c
+	$(CC) $(CFLAGS) -shared -fPIC -fvisibility=default \
+		-o $@ $< $(LDFLAGS) -L. -ltestfixture -Wl,-rpath=.
 
 # compile raplt objects
 $(RA_SRC)/raplt_core.o: $(RA_SRC)/raplt_core.c
@@ -79,6 +84,12 @@ test_batch: test_batch.c test_runner.h $(RA_SRC)/raplt_util.o
 
 test_signal_safety: test_signal_safety.c test_runner.h $(RA_SRC)/raplt_signal.o $(RA_SRC)/raplt_util.o
 	$(CC) $(CFLAGS) $(INCLUDE) -o $@ $< $(RA_SRC)/raplt_signal.o $(RA_SRC)/raplt_util.o $(LDFLAGS)
+
+test_hook: test_hook.c test_runner.h $(RA_OBJS) libtestfixture.so libtest_hook_caller.so
+	$(CC) $(CFLAGS) $(INCLUDE) -o $@ $< $(RA_OBJS) $(LDFLAGS)
+
+test_region: test_region.c test_runner.h $(RA_OBJS) libtestfixture.so
+	$(CC) $(CFLAGS) $(INCLUDE) -o $@ $< $(RA_OBJS) $(LDFLAGS)
 
 test: $(TARGETS)
 	@./run_tests.sh

@@ -48,3 +48,15 @@ void *test_pthread_create(pthread_t *t, const void *a,
     (void)a;
     return (void *)(uintptr_t)pthread_create(t, NULL, fn, arg);
 }
+
+__attribute__((visibility("default")))
+int fixture_add(int a, int b)
+{
+    return a + b;
+}
+
+__attribute__((visibility("default")))
+int fixture_sub(int a, int b)
+{
+    return a - b;
+}

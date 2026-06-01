@@ -123,6 +123,7 @@ static struct {
     uintptr_t     start;
     uintptr_t     end;
     unsigned int  perms;
+    const char   *pathname;
 } g_all_regions[RAPLT_MAX_ALL_REGIONS];
 static int g_all_region_count = 0;
 
@@ -305,30 +306,54 @@ static int raplt_core_init_locked(void)
 
     raplt_signal_init();
 
+    {
+        raplt_map_entry_t *all = NULL;
+        size_t all_count = 0;
+        if (raplt_scan_all_maps(&all, &all_count) == 0) {
+            for (size_t i = 0; i < all_count && g_all_region_count < RAPLT_MAX_ALL_REGIONS; i++)
+            {
+                if (all[i].pathname[0] == '[') continue;
+                g_all_regions[g_all_region_count].start = all[i].base_addr;
+                g_all_regions[g_all_region_count].end   = all[i].end_addr;
+                g_all_regions[g_all_region_count].perms =
+                    (all[i].prot_read  ? PROT_READ  : 0) |
+                    (all[i].prot_write ? PROT_WRITE : 0) |
+                    (all[i].prot_exec  ? PROT_EXEC  : 0);
+                g_all_regions[g_all_region_count].pathname = strdup(all[i].pathname);
+                g_all_region_count++;
+            }
+            raplt_free_maps(all, all_count);
+        }
+    }
+
     for(size_t i = 0; i < map_count; i++) {
         if(is_ignored(maps[i].pathname)) continue;
         if(is_self_lib(maps[i].pathname)) continue;
-
-        if(g_all_region_count < RAPLT_MAX_ALL_REGIONS) {
-            g_all_regions[g_all_region_count].start = maps[i].base_addr;
-            g_all_regions[g_all_region_count].end   = maps[i].end_addr;
-            g_all_regions[g_all_region_count].perms =
-                (maps[i].prot_read  ? PROT_READ  : 0) |
-                (maps[i].prot_write ? PROT_WRITE : 0) |
-                (maps[i].prot_exec  ? PROT_EXEC  : 0);
-            g_all_region_count++;
-        }
 
         raplt_lib_t *lib = calloc(1, sizeof(raplt_lib_t));
         if(!lib) continue;
 
         if(raplt_signal_guard_enter()) { free(lib); continue; }
 
-        if(raplt_elf_check_header(maps[i].base_addr) != 0) {
-            raplt_signal_guard_exit(); free(lib); continue;
+        uintptr_t elf_base = maps[i].base_addr;
+        if (raplt_elf_check_header(elf_base) != 0) {
+            for (int ri = 0; ri < g_all_region_count; ri++) {
+                if (!g_all_regions[ri].pathname ||
+                    strcmp(g_all_regions[ri].pathname, maps[i].pathname))
+                    continue;
+                if (is_self_lib(g_all_regions[ri].pathname))
+                    continue;
+                if (raplt_elf_check_header(g_all_regions[ri].start) == 0) {
+                    elf_base = g_all_regions[ri].start;
+                    break;
+                }
+            }
+            if (elf_base == maps[i].base_addr) {
+                raplt_signal_guard_exit(); free(lib); continue;
+            }
         }
 
-        int r = raplt_elf_init(lib, maps[i].base_addr,
+        int r = raplt_elf_init(lib, elf_base,
                                 maps[i].pathname,
                                 maps[i].dev, maps[i].inode);
         if(r != 0) { raplt_signal_guard_exit(); free(lib); continue; }
