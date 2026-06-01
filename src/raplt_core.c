@@ -124,6 +124,8 @@ static struct {
     uintptr_t     end;
     unsigned int  perms;
     const char   *pathname;
+    dev_t         dev;
+    ino_t         inode;
 } g_all_regions[RAPLT_MAX_ALL_REGIONS];
 static int g_all_region_count = 0;
 
@@ -188,8 +190,19 @@ static int is_ignored(const char *pathname)
     return 0;
 }
 
-static int is_self_lib(const char *pathname)
+static dev_t g_self_dev;
+static ino_t g_self_inode;
+
+static int is_self_lib(dev_t dev, ino_t inode)
 {
+    if(!g_core.exclude_self) return 0;
+    if(!g_self_inode) return 0;
+    return (dev == g_self_dev && inode == g_self_inode) ? 1 : 0;
+}
+
+static int is_self_path(const char *pathname)
+{
+    if(!pathname) return 0;
     if(!g_core.exclude_self) return 0;
     Dl_info info;
     if(dladdr((void *)raplt_register, &info))
@@ -234,10 +247,12 @@ static int raplt_patch_got_entry(void **addr, void *value)
     unsigned int perms = g_all_regions[region_idx].perms;
 
     /* self library: mremap on own pages would deadlock — mprotect instead */
-    if (g_all_regions[region_idx].pathname &&
-        is_self_lib(g_all_regions[region_idx].pathname)) {
+    if (g_all_regions[region_idx].inode &&
+        is_self_lib(g_all_regions[region_idx].dev, g_all_regions[region_idx].inode)) {
         if (!(perms & PROT_WRITE)) {
-            if (raplt_set_protect(start, PROT_READ | PROT_WRITE | perms))
+            size_t len = end - start;
+            if (mprotect((void *)start, len,
+                         PROT_READ | PROT_WRITE | perms))
                 return -1;
         }
         raplt_write_got(addr, value);
@@ -309,6 +324,16 @@ static int raplt_core_init_locked(void)
     raplt_signal_init();
 
     {
+        uintptr_t self_addr = (uintptr_t)&raplt_init;
+        for (size_t i = 0; i < map_count; i++) {
+            if (self_addr >= maps[i].base_addr && self_addr < maps[i].end_addr) {
+                g_self_dev = maps[i].dev;
+                g_self_inode = maps[i].inode;
+                break;
+            }
+        }
+    }
+    {
         raplt_map_entry_t *all = NULL;
         size_t all_count = 0;
         if (raplt_scan_all_maps(&all, &all_count) == 0) {
@@ -322,6 +347,8 @@ static int raplt_core_init_locked(void)
                     (all[i].prot_write ? PROT_WRITE : 0) |
                     (all[i].prot_exec  ? PROT_EXEC  : 0);
                 g_all_regions[g_all_region_count].pathname = strdup(all[i].pathname);
+                g_all_regions[g_all_region_count].dev      = all[i].dev;
+                g_all_regions[g_all_region_count].inode    = all[i].inode;
                 g_all_region_count++;
             }
             raplt_free_maps(all, all_count);
@@ -330,7 +357,7 @@ static int raplt_core_init_locked(void)
 
     for(size_t i = 0; i < map_count; i++) {
         if(is_ignored(maps[i].pathname)) continue;
-        if(is_self_lib(maps[i].pathname)) continue;
+        if(is_self_path(maps[i].pathname)) continue;
 
         raplt_lib_t *lib = calloc(1, sizeof(raplt_lib_t));
         if(!lib) continue;
@@ -343,7 +370,7 @@ static int raplt_core_init_locked(void)
                 if (!g_all_regions[ri].pathname ||
                     strcmp(g_all_regions[ri].pathname, maps[i].pathname))
                     continue;
-                if (is_self_lib(g_all_regions[ri].pathname))
+                if (is_self_path(g_all_regions[ri].pathname))
                     continue;
                 if (raplt_elf_check_header(g_all_regions[ri].start) == 0) {
                     elf_base = g_all_regions[ri].start;
@@ -406,9 +433,10 @@ static int raplt_patch_registration(raplt_registration_t *reg)
             patched++;
         } else {
             backup = raplt_read_got(addr);
-            raplt_patch_got_entry(addr, reg->new_func);
-            entries[i].original = backup;
-            patched++;
+            if (raplt_patch_got_entry(addr, reg->new_func) == 0) {
+                entries[i].original = backup;
+                patched++;
+            }
         }
     }
 
@@ -482,8 +510,16 @@ raplt_hook_t *raplt_register(const char *pathname_regex,
 
     if(use_regex) regfree(&regex);
 
-    if(!(flags & RAPLT_FLAG_BATCH))
-        raplt_patch_registration(reg);
+    if(!(flags & RAPLT_FLAG_BATCH)) {
+        if (raplt_patch_registration(reg) != 0) {
+            LOGI("patch failed for %s", symbol);
+            free(reg->symbol);
+            free(reg->entries);
+            free(reg);
+            pthread_mutex_unlock(&g_core.mutex);
+            return NULL;
+        }
+    }
 
     reg->next = g_core.hooks;
     g_core.hooks = reg;
@@ -558,7 +594,8 @@ int raplt_unregister(raplt_hook_t *hook)
                 /* tier 1: re-resolve from .dynsym st_value */
                 void *correct = NULL;
                 if(lib && raplt_elf_resolve_st_value(lib, reg->symbol, &correct) == 0) {
-                    raplt_patch_got_entry(got_addr, correct);
+                    if (raplt_patch_got_entry(got_addr, correct))
+                        LOGW("tier1 restore failed for %s", reg->symbol);
                     continue;
                 }
 
@@ -570,7 +607,9 @@ int raplt_unregister(raplt_hook_t *hook)
 
                 /* tier 3: cached original fallback */
                 if(reg->entries[i].original) {
-                    raplt_patch_got_entry(got_addr, reg->entries[i].original);
+                    if (raplt_patch_got_entry(got_addr,
+                               reg->entries[i].original))
+                        LOGW("tier3 restore failed for %s", reg->symbol);
                     continue;
                 }
 
@@ -688,7 +727,7 @@ void rescan_libraries(void)
 
     for(size_t i = 0; i < map_count; i++) {
         if(is_ignored(maps[i].pathname)) continue;
-        if(is_self_lib(maps[i].pathname)) continue;
+        if(is_self_path(maps[i].pathname)) continue;
 
         int known = 0;
         for(raplt_lib_t *lib = g_core.libs; lib; lib = lib->next) {
@@ -777,7 +816,7 @@ void raplt_enable_debug(int enable)      { (void)enable; }
 
 void raplt_enable_sigsegv_protection(int enable) { (void)enable; }
 
-const char *raplt_version(void) { return "RaPLT 1.2.0 (2026)"; }
+const char *raplt_version(void) { return "RaPLT 1.3.0 (2026)"; }
 
 void raplt_clear(void)
 {
