@@ -229,26 +229,28 @@ static int raplt_patch_got_entry(void **addr, void *value)
         return 0;
     }
     void *backup_ptr = NULL;
-    {
-        void *got_array[1] = { (void *)addr };
-        uintptr_t start  = g_all_regions[region_idx].start;
-        uintptr_t end    = g_all_regions[region_idx].end;
-        unsigned int perms = g_all_regions[region_idx].perms;
-        if (raplt_mremap_patch_region(start, end, perms,
-                                       got_array, value, 1, &backup_ptr) == 0) {
-            add_mremap_region(start, end, backup_ptr);
-            return 0;
+    uintptr_t start  = g_all_regions[region_idx].start;
+    uintptr_t end    = g_all_regions[region_idx].end;
+    unsigned int perms = g_all_regions[region_idx].perms;
+
+    /* self library: mremap on own pages would deadlock — mprotect instead */
+    if (g_all_regions[region_idx].pathname &&
+        is_self_lib(g_all_regions[region_idx].pathname)) {
+        if (!(perms & PROT_WRITE)) {
+            if (raplt_set_protect(start, PROT_READ | PROT_WRITE | perms))
+                return -1;
         }
+        raplt_write_got(addr, value);
+        return 0;
     }
-    unsigned int old_prot = 0;
-    raplt_get_protect((uintptr_t)addr, sizeof(void *), NULL, &old_prot);
-    if (!(old_prot & PROT_WRITE))
-        if (raplt_set_protect((uintptr_t)addr, PROT_READ | PROT_WRITE)) return -1;
-    raplt_write_got(addr, value);
-    if (!(old_prot & PROT_WRITE))
-        raplt_set_protect((uintptr_t)addr, old_prot);
-    raplt_flush_cache((uintptr_t)addr);
-    return 0;
+
+    void *got_array[1] = { (void *)addr };
+    if (raplt_mremap_patch_region(start, end, perms,
+                                   got_array, value, 1, &backup_ptr) == 0) {
+        add_mremap_region(start, end, backup_ptr);
+        return 0;
+    }
+    return -1;
 }
 
 /* O(1) got_addr -> reg map (open addressing, linear probe) */
