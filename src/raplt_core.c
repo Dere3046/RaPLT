@@ -205,9 +205,13 @@ static int is_self_path(const char *pathname)
     if(!pathname) return 0;
     if(!g_core.exclude_self) return 0;
     Dl_info info;
-    if(dladdr((void *)raplt_register, &info))
-        return (strcmp(info.dli_fname, pathname) == 0);
-    return 0;
+    if(!dladdr((void *)raplt_register, &info)) return 0;
+    if(strcmp(info.dli_fname, pathname) == 0) return 1;
+    char *abs = realpath(info.dli_fname, NULL);
+    if(!abs) return 0;
+    int r = strcmp(abs, pathname) == 0;
+    free(abs);
+    return r;
 }
 
 static int detect_caller_lib(char *buf, size_t bufsz)
