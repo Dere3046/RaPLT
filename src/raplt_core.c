@@ -9,6 +9,7 @@
 #include <pthread.h>
 #include <regex.h>
 #include <dlfcn.h>
+#include <sys/stat.h>
 #include <sys/mman.h>
 #include <limits.h>
 
@@ -250,6 +251,14 @@ static int raplt_patch_got_entry(void **addr, void *value)
     uintptr_t end    = g_all_regions[region_idx].end;
     unsigned int perms = g_all_regions[region_idx].perms;
 
+#if !defined(__ANDROID__)
+    if (g_all_regions[region_idx].pathname) {
+        const char *p = g_all_regions[region_idx].pathname;
+        if (strncmp(p, "/usr/", 5) == 0 || strncmp(p, "/lib/", 5) == 0)
+            return -1;
+    }
+#endif
+
     /* self library: mremap on own pages would deadlock — mprotect instead */
     if (g_all_regions[region_idx].inode &&
         is_self_lib(g_all_regions[region_idx].dev, g_all_regions[region_idx].inode)) {
@@ -328,12 +337,12 @@ static int raplt_core_init_locked(void)
     raplt_signal_init();
 
     {
-        uintptr_t self_addr = (uintptr_t)&raplt_init;
-        for (size_t i = 0; i < map_count; i++) {
-            if (self_addr >= maps[i].base_addr && self_addr < maps[i].end_addr) {
-                g_self_dev = maps[i].dev;
-                g_self_inode = maps[i].inode;
-                break;
+        Dl_info info;
+        if(dladdr((void *)raplt_init, &info) && info.dli_fname) {
+            struct stat st;
+            if(stat(info.dli_fname, &st) == 0) {
+                g_self_dev = st.st_dev;
+                g_self_inode = st.st_ino;
             }
         }
     }
