@@ -361,7 +361,12 @@ static int raplt_core_init_locked(void)
 
     for(size_t i = 0; i < map_count; i++) {
         if(is_ignored(maps[i].pathname)) continue;
+#if defined(__ANDROID__)
         if(is_self_path(maps[i].pathname)) continue;
+#else
+        if(is_self_lib(maps[i].dev, maps[i].inode)) continue;
+        if(!g_self_inode && is_self_path(maps[i].pathname)) continue;
+#endif
 
         raplt_lib_t *lib = calloc(1, sizeof(raplt_lib_t));
         if(!lib) continue;
@@ -376,6 +381,10 @@ static int raplt_core_init_locked(void)
                     continue;
                 if (is_self_path(g_all_regions[ri].pathname))
                     continue;
+#if !defined(__ANDROID__)
+                if (is_self_lib(g_all_regions[ri].dev, g_all_regions[ri].inode))
+                    continue;
+#endif
                 if (raplt_elf_check_header(g_all_regions[ri].start) == 0) {
                     elf_base = g_all_regions[ri].start;
                     break;
@@ -731,7 +740,12 @@ void rescan_libraries(void)
 
     for(size_t i = 0; i < map_count; i++) {
         if(is_ignored(maps[i].pathname)) continue;
+#if defined(__ANDROID__)
         if(is_self_path(maps[i].pathname)) continue;
+#else
+        if(is_self_lib(maps[i].dev, maps[i].inode)) continue;
+        if(!g_self_inode && is_self_path(maps[i].pathname)) continue;
+#endif
 
         int known = 0;
         for(raplt_lib_t *lib = g_core.libs; lib; lib = lib->next) {
