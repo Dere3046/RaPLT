@@ -1,4 +1,4 @@
-/* references: xHook (MIT), bhook (LGPL-2.1) */
+/* references: xHook (MIT), bhook (MIT) */
 
 #define _GNU_SOURCE
 #include <stdio.h>

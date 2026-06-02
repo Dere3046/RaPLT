@@ -1,4 +1,4 @@
-/* references: xHook (MIT), bhook (LGPL-2.1), ShadowHook (MIT) */
+/* references: xHook (MIT), bhook (MIT), ShadowHook (MIT) */
 
 #include <stdio.h>
 #include <stdlib.h>

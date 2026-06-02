@@ -1,4 +1,4 @@
-/* references: bhook (LGPL-2.1) */
+/* references: bhook (MIT) */
 
 #ifndef RAPLT_CFI_H
 #define RAPLT_CFI_H 1

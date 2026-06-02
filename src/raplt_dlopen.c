@@ -1,4 +1,4 @@
-/* references: bhook (LGPL-2.1) — dlopen interception via PLT hook */
+/* references: bhook (MIT) — dlopen interception via PLT hook */
 
 #include <dlfcn.h>
 #include <stdlib.h>

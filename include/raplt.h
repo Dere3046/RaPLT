@@ -1,5 +1,5 @@
 /* RaPLT — PLT hook framework for Android
- * references: xHook (MIT), libelfmaster (BSD-2-Clause), bhook (LGPL-2.1) */
+ * references: xHook (MIT), libelfmaster (BSD-2-Clause), bhook (MIT) */
 
 #ifndef RAPLT_H
 #define RAPLT_H 1

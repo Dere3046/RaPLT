@@ -1,4 +1,4 @@
-/* references: xHook (MIT), bhook (LGPL-2.1) */
+/* references: xHook (MIT), bhook (MIT) */
 
 #ifndef RAPLT_CORE_H
 #define RAPLT_CORE_H 1

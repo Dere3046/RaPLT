@@ -1,4 +1,4 @@
-/* references: bhook (LGPL-2.1) — CFI slowpath disable approach */
+/* references: bhook (MIT) — CFI slowpath disable approach */
 
 #include <stdint.h>
 #include <string.h>

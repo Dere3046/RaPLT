@@ -1,4 +1,4 @@
-/* references: xHook (MIT), libelfmaster (BSD-2-Clause), bhook (LGPL-2.1) */
+/* references: xHook (MIT), libelfmaster (BSD-2-Clause), bhook (MIT) */
 
 #ifndef RAPLT_ELF_H
 #define RAPLT_ELF_H 1

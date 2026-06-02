@@ -1,4 +1,4 @@
-/* references: xHook (MIT), bhook (LGPL-2.1) */
+/* references: xHook (MIT), bhook (MIT) */
 
 #ifndef RAPLT_UTIL_H
 #define RAPLT_UTIL_H 1
