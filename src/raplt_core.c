@@ -541,6 +541,8 @@ raplt_hook_t *raplt_register(const char *pathname_regex,
             pthread_mutex_unlock(&g_core.mutex);
             return NULL;
         }
+        if (old_func && reg->entry_count > 0)
+            *old_func = reg->entries[0].original;
     }
 
     reg->next = g_core.hooks;
