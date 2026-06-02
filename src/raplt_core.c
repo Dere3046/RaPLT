@@ -278,6 +278,16 @@ static int raplt_patch_got_entry(void **addr, void *value)
         add_mremap_region(start, end, backup_ptr);
         return 0;
     }
+
+    if (!(perms & PROT_WRITE)) {
+        size_t len = end - start;
+        if (mprotect((void *)start, len, PROT_READ | PROT_WRITE | perms) == 0) {
+            raplt_write_got(addr, value);
+            mprotect((void *)start, len, perms);
+            return 0;
+        }
+        LOGW("mprotect denied for GOT at %p (mseal?)", (void *)start);
+    }
     return -1;
 }
 

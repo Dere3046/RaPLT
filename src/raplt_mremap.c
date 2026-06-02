@@ -72,6 +72,7 @@ int raplt_mremap_patch_region(uintptr_t start, uintptr_t end,
         result = sys_mremap(orig, len, len,
                              MREMAP_FIXED | MREMAP_MAYMOVE, backup);
         if (result == MAP_FAILED || result != backup) {
+            LOGW("mremap failed for %p (mseal?)", orig);
             munmap(backup, len);
             return -1;
         }
